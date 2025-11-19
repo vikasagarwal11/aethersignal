@@ -6,8 +6,8 @@ Handles natural language query tab and advanced search tab.
 from datetime import datetime
 import streamlit as st
 
-import nl_query_parser
-import watchlist_tab
+from src import nl_query_parser
+from src import watchlist_tab
 
 
 def render_nl_query_tab(normalized_df):

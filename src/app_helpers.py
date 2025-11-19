@@ -11,10 +11,10 @@ from typing import Dict, List, Optional, Set
 import pandas as pd
 import streamlit as st
 
-import faers_loader
-import pv_schema
-import signal_stats
-from utils import normalize_text
+from src import faers_loader
+from src import pv_schema
+from src import signal_stats
+from src.utils import normalize_text
 
 
 def initialize_session():

@@ -6,8 +6,8 @@ Handles advanced filters, quantum toggle, and controls.
 from typing import Dict
 import streamlit as st
 
-import analytics
-import nl_query_parser
+from src import analytics
+from src import nl_query_parser
 
 
 def render_sidebar():

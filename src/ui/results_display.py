@@ -13,19 +13,19 @@ import numpy as np
 import plotly.express as px
 import streamlit as st
 
-import analytics
-import advanced_stats
-import nl_query_parser
-import pdf_report
-import quantum_ranking
-import signal_stats
-import subgroup_discovery
-from app_helpers import (
+from src import analytics
+from src import advanced_stats
+from src import nl_query_parser
+from src import pdf_report
+from src import quantum_ranking
+from src import signal_stats
+from src import subgroup_discovery
+from src.app_helpers import (
     cached_get_summary_stats,
     format_reaction_with_meddra,
     render_filter_chips,
 )
-from utils import normalize_text
+from src.utils import normalize_text
 
 
 def display_query_results(filters: Dict, query_text: str, normalized_df: pd.DataFrame):

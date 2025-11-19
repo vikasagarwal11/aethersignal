@@ -6,9 +6,9 @@ Handles file upload, loading, and schema display.
 import pandas as pd
 import streamlit as st
 
-import analytics
-import pv_schema
-from app_helpers import cached_detect_and_normalize, load_all_files
+from src import analytics
+from src import pv_schema
+from src.app_helpers import cached_detect_and_normalize, load_all_files
 
 
 def render_upload_section():
