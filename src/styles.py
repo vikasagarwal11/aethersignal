@@ -9,9 +9,9 @@ AETHERSIGNAL_THEME_CSS = """
    GLOBAL APP STYLING
    ============================================ */
 .stApp {
-    background: radial-gradient(circle at top left, #fdfefe 0%, #f3f6fb 45%, #e4ecf7 100%) !important;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%) !important;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-    color: #1f2933;
+    color: #0f172a;
 }
 
 /* Main content container */
@@ -21,21 +21,33 @@ AETHERSIGNAL_THEME_CSS = """
     max-width: 1180px !important;
 }
 
+/* Full-width hero section override */
+.main-hero,
+.main-header {
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+}
+
 /* ============================================
-   HEADER / HERO
+   HEADER / HERO (Enterprise Blue + Slate)
    ============================================ */
 .main-header {
     background:
-      radial-gradient(circle at 0% 0%, rgba(59,130,246,0.15), transparent 60%),
-      radial-gradient(circle at 90% 90%, rgba(56,189,248,0.12), transparent 65%),
-      linear-gradient(120deg, #1e3a8a 0%, #2563eb 42%, #38bdf8 100%);
-    color: #f9fafb;
-    padding: 1.25rem 1.6rem;
-    border-radius: 16px;
-    margin-bottom: 1.1rem;
-    box-shadow: 0 18px 40px rgba(30,64,175,0.55);
+      radial-gradient(circle at 0% 0%, rgba(59,130,246,0.12), transparent 55%),
+      radial-gradient(circle at 100% 100%, rgba(15,23,42,0.08), transparent 60%),
+      linear-gradient(135deg, #1e40af 0%, #2563eb 45%, #3b82f6 100%);
+    color: #ffffff;
+    padding: 1.5rem 2rem;
+    border-radius: 20px;
+    margin-bottom: 1.5rem;
+    box-shadow: 
+        0 20px 50px rgba(30, 64, 175, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
     position: relative;
     overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .main-header h1 {
@@ -77,13 +89,22 @@ AETHERSIGNAL_THEME_CSS = """
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 0.35rem 0.8rem;
+    padding: 0.4rem 0.9rem;
     border-radius: 999px;
     font-size: 0.78rem;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(191,219,254,0.8);
-    color: #e5edff;
-    background: rgba(15,23,42,0.45);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    background: rgba(15, 23, 42, 0.35);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease-out;
+}
+
+.hero-pill:hover {
+    background: rgba(15, 23, 42, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
 }
 
 .hero-pill span {
@@ -91,19 +112,19 @@ AETHERSIGNAL_THEME_CSS = """
 }
 
 .pill-session {
-    background: rgba(15,23,42,0.65);
-    border-color: rgba(148,163,184,0.9);
+    background: rgba(30, 64, 175, 0.4);
+    border-color: rgba(191, 219, 254, 0.4);
 }
 
 .pill-faers {
-    background: rgba(124,58,237,0.75);
-    border-color: rgba(196,181,253,0.95);
+    background: rgba(99, 102, 241, 0.4);
+    border-color: rgba(196, 181, 253, 0.4);
 }
 
 .pill-quantum {
-    background: rgba(56,189,248,0.8);
-    border-color: rgba(191,219,254,0.95);
-    color: #0b1120;
+    background: rgba(59, 130, 246, 0.5);
+    border-color: rgba(191, 219, 254, 0.5);
+    color: #ffffff;
 }
 
 /* Legacy support for main-header-pill-row */
@@ -116,16 +137,18 @@ AETHERSIGNAL_THEME_CSS = """
     z-index: 1;
 }
 
-/* faint abstract glow in background */
-.main-header::before {
+/* Soft glow in background (enterprise style) */
+.main-header::before,
+.main-hero::before {
     content: "";
     position: absolute;
-    inset: -40%;
+    inset: -30%;
     background:
-      radial-gradient(circle at 10% 0%, rgba(191,219,254,0.55), transparent 60%),
-      radial-gradient(circle at 95% 90%, rgba(129,230,217,0.4), transparent 65%);
-    opacity: 0.7;
+      radial-gradient(circle at 10% 0%, rgba(191,219,254,0.25), transparent 50%),
+      radial-gradient(circle at 95% 90%, rgba(148,163,184,0.15), transparent 55%);
+    opacity: 0.6;
     pointer-events: none;
+    filter: blur(40px);
 }
 
 /* Reset-session button column spacing */
@@ -150,27 +173,31 @@ AETHERSIGNAL_THEME_CSS = """
 /* Legacy support for .main-hero (if used in app.py) */
 .main-hero {
     background:
-      radial-gradient(circle at 0% 0%, rgba(59,130,246,0.15), transparent 60%),
-      radial-gradient(circle at 90% 90%, rgba(56,189,248,0.12), transparent 65%),
-      linear-gradient(120deg, #1e3a8a 0%, #2563eb 42%, #38bdf8 100%);
-    color: #f9fafb;
-    padding: 1.25rem 1.6rem;
-    border-radius: 16px;
-    margin-bottom: 1.1rem;
-    box-shadow: 0 18px 40px rgba(30,64,175,0.55);
+      radial-gradient(circle at 0% 0%, rgba(59,130,246,0.12), transparent 55%),
+      radial-gradient(circle at 100% 100%, rgba(15,23,42,0.08), transparent 60%),
+      linear-gradient(135deg, #1e40af 0%, #2563eb 45%, #3b82f6 100%);
+    color: #ffffff;
+    padding: 1.5rem 2rem;
+    border-radius: 20px;
+    margin-bottom: 1.5rem;
+    box-shadow: 
+        0 20px 50px rgba(30, 64, 175, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
     position: relative;
     overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .main-hero::before {
     content: "";
     position: absolute;
-    inset: -40%;
+    inset: -30%;
     background:
-      radial-gradient(circle at 10% 0%, rgba(191,219,254,0.55), transparent 60%),
-      radial-gradient(circle at 95% 90%, rgba(129,230,217,0.4), transparent 65%);
-    opacity: 0.7;
+      radial-gradient(circle at 10% 0%, rgba(191,219,254,0.25), transparent 50%),
+      radial-gradient(circle at 95% 90%, rgba(148,163,184,0.15), transparent 55%);
+    opacity: 0.6;
     pointer-events: none;
+    filter: blur(40px);
 }
 
 .main-hero h1 {
@@ -279,7 +306,7 @@ AETHERSIGNAL_THEME_CSS = """
 }
 
 /* ============================================
-   CARDS & SECTION TITLES
+   CARDS & SECTION TITLES (with fade-in animation)
    ============================================ */
 .block-card {
     background: #ffffff;
@@ -289,13 +316,25 @@ AETHERSIGNAL_THEME_CSS = """
     box-shadow: 0 18px 40px rgba(15,23,42,0.08);
     margin-top: 16px;
     margin-bottom: 18px;
-    transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, border-color 0.12s ease-out;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: visible;
     position: relative;
+    animation: fadeInUp 0.4s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .block-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
     box-shadow: 0 24px 55px rgba(15,23,42,0.14);
     border-color: #bfdbfe;
 }
@@ -430,7 +469,7 @@ h2, h3 {
 }
 
 /* ============================================
-   BUTTONS
+   BUTTONS (with ripple effect)
    ============================================ */
 .stButton>button {
     position: relative;
@@ -442,17 +481,40 @@ h2, h3 {
     padding: 0.5rem 1.4rem;
     font-weight: 600;
     font-size: 0.9rem;
-    transition: transform 0.1s ease-out, box-shadow 0.1s ease-out, background 0.1s ease-out;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+/* Ripple effect */
+.stButton>button::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s, opacity 0.6s;
+    opacity: 0;
+}
+
+.stButton>button:active::before {
+    width: 300px;
+    height: 300px;
+    opacity: 0;
+    transition: width 0s, height 0s, opacity 0.6s;
 }
 
 .stButton>button::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at center, rgba(255,255,255,0.35), transparent 55%);
+    background: radial-gradient(circle at center, rgba(255,255,255,0.25), transparent 60%);
     opacity: 0;
     transform: scale(0.8);
-    transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
 }
 
 .stButton>button:hover::after {
@@ -594,22 +656,70 @@ div[data-testid="stSidebar"] .reset-session-hint + div button:hover {
 
 
 /* ============================================
-   FILE UPLOADER / DROPZONE
+   FILE UPLOADER / DROPZONE (Frosted Glass Design)
    ============================================ */
+/* Hide the default "Limit 200MB per file" text - Streamlit shows this in small text */
+[data-testid="stFileUploadDropzone"] small,
+[data-testid="stFileUploadDropzone"] p small,
+[data-testid="stFileUploadDropzone"] div small,
+[data-testid="stFileUploadDropzone"] > div > small,
+div[data-testid="stFileUploadDropzone"] small[class*="size"],
+[data-testid="stFileUploadDropzone"] p[class*="caption"],
+[data-testid="stFileUploadDropzone"] div[class*="caption"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
 [data-testid="stFileUploadDropzone"] {
-    background: #f8fafc !important;
-    border-radius: 12px !important;
-    border: 1px dashed #cbd5e1 !important;
-    padding: 1.4rem 1rem !important;
-    transition: border-color 0.15s ease-out, background-color 0.15s ease-out,
-                box-shadow 0.15s ease-out, transform 0.08s ease-out;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.95) 100%) !important;
+    backdrop-filter: blur(12px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
+    border-radius: 24px !important;
+    border: 2px dashed rgba(37, 99, 235, 0.3) !important;
+    padding: 2rem 1.5rem !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 
+        0 8px 32px rgba(15, 23, 42, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 0 0 1px rgba(37, 99, 235, 0.05) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Sky gradient border effect on hover */
+[data-testid="stFileUploadDropzone"]::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 24px;
+    padding: 2px;
+    background: linear-gradient(135deg, 
+        rgba(37, 99, 235, 0.4) 0%, 
+        rgba(56, 189, 248, 0.3) 50%,
+        rgba(129, 230, 217, 0.2) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+    pointer-events: none;
+}
+
+[data-testid="stFileUploadDropzone"]:hover::before {
+    opacity: 1;
 }
 
 [data-testid="stFileUploadDropzone"]:hover {
-    border-color: #2563eb !important;
-    background: #eff6ff !important;
-    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.10);
-    transform: translateY(-1px);
+    border-color: rgba(37, 99, 235, 0.5) !important;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(239, 246, 255, 0.98) 100%) !important;
+    box-shadow: 
+        0 16px 48px rgba(37, 99, 235, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        0 0 0 1px rgba(37, 99, 235, 0.1) !important;
+    transform: translateY(-2px);
 }
 
 /* Tweaks to the text/icons inside the dropzone */
@@ -696,6 +806,23 @@ div[data-testid="stHorizontalBlock"] > div:empty {
     display: none !important;
 }
 
+/* Hide any st.empty() containers that create white lines */
+div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"]:empty,
+div[data-testid="stHorizontalBlock"] > div[data-testid="stHorizontalBlock"]:empty,
+div[data-testid="element-container"]:empty {
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+/* Remove any horizontal lines from empty containers */
+div[data-testid="stVerticalBlock"]:has(> div:empty) {
+    gap: 0 !important;
+}
+
 /* ============================================
    SELECTBOX / DROPDOWN STYLING
    ============================================ */
@@ -741,18 +868,19 @@ div[data-testid="stSelectbox"] > div > div:hover svg {
 /* Make expanders more visible */
 div[data-testid="stExpander"] {
     border: 1.5px solid #e2e8f0 !important;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     background-color: #f8fafc !important;
     padding: 0.5rem !important;
     margin-bottom: 0.75rem !important;
     box-shadow: 0 2px 4px rgba(15,23,42,0.04) !important;
-    transition: all 0.15s ease-out !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 div[data-testid="stExpander"]:hover {
     border-color: #cbd5e1 !important;
-    box-shadow: 0 4px 8px rgba(15,23,42,0.08) !important;
+    box-shadow: 0 4px 12px rgba(15,23,42,0.08) !important;
     background-color: #ffffff !important;
+    transform: translateY(-1px);
 }
 
 /* Expander header (clickable area) */
@@ -799,6 +927,91 @@ div[data-testid="stExpander"] > div[data-testid="stExpanderContent"] {
     padding: 0.75rem 1rem !important;
     background-color: #ffffff !important;
     border-radius: 0 0 8px 8px !important;
+}
+
+/* ============================================
+   QUERY HISTORY BUTTONS
+   ============================================ */
+/* Style query history buttons with icons and better grouping */
+div[data-testid="stExpander"] .stButton button[key^="history_"] {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+    border: 1.5px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    color: #0f172a !important;
+    font-weight: 500 !important;
+    font-size: 0.88rem !important;
+    padding: 0.65rem 1rem !important;
+    margin-bottom: 0.5rem !important;
+    text-align: left !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+div[data-testid="stExpander"] .stButton button[key^="history_"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, #2563eb 0%, #3b82f6 100%);
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
+}
+
+div[data-testid="stExpander"] .stButton button[key^="history_"]:hover {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+    border-color: #cbd5e1 !important;
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12) !important;
+}
+
+div[data-testid="stExpander"] .stButton button[key^="history_"]:hover::before {
+    opacity: 1;
+}
+
+div[data-testid="stExpander"] .stButton button[key="clear_history"] {
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
+    border: 1.5px solid #fca5a5 !important;
+    color: #991b1b !important;
+    font-weight: 600 !important;
+    margin-top: 0.75rem !important;
+}
+
+div[data-testid="stExpander"] .stButton button[key="clear_history"]:hover {
+    background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%) !important;
+    border-color: #ef4444 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important;
+}
+
+/* ============================================
+   SMOOTH TRANSITIONS FOR STATE CHANGES
+   ============================================ */
+/* Fade in for results sections */
+div[data-testid="stVerticalBlock"]:has(.block-card) {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Icon transition effects */
+.stButton>button[class*="icon"] svg,
+.stButton>button:has(svg) svg {
+    transition: transform 0.2s ease-out;
+}
+
+.stButton>button:hover:has(svg) svg {
+    transform: scale(1.1);
 }
 
 /* ============================================

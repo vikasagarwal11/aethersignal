@@ -56,8 +56,18 @@ analytics/usage_log.csv
 *.zip
 !requirements.txt
 
+# Database files
+data/social_ae/*.db
+data/social_ae/*.db-journal
+
+# Supabase
+.supabase/
+
 # Temporary files
 *.tmp
 *.bak
 *.cache
+
+# Not to check in
+NotToCheckin/
 

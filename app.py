@@ -9,6 +9,7 @@ from src.styles import apply_theme
 from src.app_helpers import initialize_session
 from src.ui import header, upload_section, query_interface, sidebar
 from src.ui.results_display import display_query_results
+from src.social_ae import render_social_ae_module
 
 
 # -------------------------------------------------------------------
@@ -48,10 +49,44 @@ upload_section.render_upload_section()
 
 
 # -------------------------------------------------------------------
+# NEW MODULE – Social AE Explorer
+# -------------------------------------------------------------------
+with st.expander("🌐 Social AE Explorer (BETA)", expanded=False):
+    render_social_ae_module()
+
+
+# -------------------------------------------------------------------
 # MAIN QUERY FLOW (only when data is loaded)
 # -------------------------------------------------------------------
 if st.session_state.data is not None and st.session_state.normalized_data is not None:
     normalized_df = st.session_state.normalized_data
+    
+    # Merge with Social AE data if enabled
+    if st.session_state.get("include_social_ae", False):
+        try:
+            from src.social_ae.social_ae_integration import load_social_ae_data, merge_faers_and_social_ae
+            
+            social_ae_df = load_social_ae_data(
+                days_back=30,
+                use_supabase=True,  # Use Supabase if available
+                drug_filter=None  # Load all drugs
+            )
+            
+            if social_ae_df is not None and not social_ae_df.empty:
+                normalized_df = merge_faers_and_social_ae(
+                    normalized_df,
+                    social_ae_df,
+                    social_weight=0.4  # 40% weight for social signals
+                )
+                st.session_state.social_ae_merged = True
+                st.session_state.social_ae_count = len(social_ae_df)
+            else:
+                st.session_state.social_ae_merged = False
+        except Exception as e:
+            # Silently fail if Social AE not available
+            st.session_state.social_ae_merged = False
+    else:
+        st.session_state.social_ae_merged = False
 
     # Render query interface with tabs
     query_interface.render_query_interface(normalized_df)

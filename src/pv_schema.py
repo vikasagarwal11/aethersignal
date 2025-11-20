@@ -6,7 +6,7 @@ Fuzzy column detection and mapping to standard PV fields.
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
 import re
-from utils import normalize_text, map_to_meddra_pt
+from src.utils import normalize_text, map_to_meddra_pt
 
 
 # Standard PV field names

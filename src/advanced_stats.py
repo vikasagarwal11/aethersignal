@@ -6,7 +6,7 @@ import numpy as np
 from scipy.stats import chi2_contingency, fisher_exact
 from typing import Dict, Optional, Tuple
 
-from utils import safe_divide
+from src.utils import safe_divide
 
 
 def calculate_ic(

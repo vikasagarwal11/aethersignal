@@ -3,10 +3,9 @@ Quantum-Inspired Ranking for AetherSignal
 Simple quantum-inspired ranking using simulated annealing and heuristics.
 """
 
-import numpy as np
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from utils import parse_date, normalize_text
+from src.utils import parse_date, normalize_text
 
 
 def quantum_rerank_signals(candidates: List[Dict[str, Any]], total_cases: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -237,12 +236,8 @@ def _calculate_quantum_score(features: Dict[str, float]) -> float:
     if 0.5 < recency <= 0.7:
         tunneling_boost += 0.05
     
-    # Final quantum score
+    # Final quantum score (deterministic)
     quantum_score = base_score + interaction_term + tunneling_boost
-    
-    # Add small quantum fluctuations (simulating quantum uncertainty)
-    quantum_noise = np.random.normal(0, 0.01)
-    quantum_score += quantum_noise
     
     # Ensure score is positive
     return max(0.0, quantum_score)

@@ -5,9 +5,10 @@ Filtering, counts, and PRR/ROR calculations with 95% CI.
 
 import pandas as pd
 import numpy as np
+import re
 from typing import Dict, List, Optional, Tuple
 from scipy import stats
-from utils import normalize_text, parse_date, extract_age, safe_divide
+from src.utils import normalize_text, parse_date, extract_age, safe_divide
 
 
 def apply_filters(df: pd.DataFrame, filters: Dict) -> pd.DataFrame:
@@ -22,93 +23,111 @@ def apply_filters(df: pd.DataFrame, filters: Dict) -> pd.DataFrame:
         Filtered DataFrame
     """
     filtered_df = df.copy()
+    if filtered_df.empty:
+        return filtered_df
+    
+    normalized_cache: Dict[str, pd.Series] = {}
+    
+    def get_normalized(col: str) -> Optional[pd.Series]:
+        if col not in filtered_df.columns:
+            return None
+        if col not in normalized_cache:
+            normalized_cache[col] = (
+                filtered_df[col]
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .replace("nan", "")
+            )
+        return normalized_cache[col]
+    
+    def apply_mask(mask):
+        nonlocal filtered_df
+        if mask is None:
+            return
+        if not isinstance(mask, pd.Series):
+            mask = pd.Series(mask, index=filtered_df.index)
+        mask = mask.fillna(False)
+        filtered_df = filtered_df[mask]
+        for key in normalized_cache:
+            normalized_cache[key] = normalized_cache[key][mask]
+    
+    def build_mask(series: pd.Series, values, invert=False):
+        if series is None:
+            return None
+        terms = values if isinstance(values, list) else [values]
+        tokens = [re.escape(normalize_text(term)) for term in terms if term]
+        tokens = [t for t in tokens if t]
+        if not tokens:
+            return None
+        pattern = "|".join(tokens)
+        mask = series.str.contains(pattern, na=False)
+        return ~mask if invert else mask
     
     # Drug filter
-    if 'drug' in filters and 'drug_name' in filtered_df.columns:
-        drug_filter = filters['drug']
-        if isinstance(drug_filter, list):
-            mask = filtered_df['drug_name'].apply(
-                lambda x: any(normalize_text(d) in normalize_text(str(x)) for d in drug_filter)
-            )
-        else:
-            mask = filtered_df['drug_name'].apply(
-                lambda x: normalize_text(drug_filter) in normalize_text(str(x))
-            )
-        filtered_df = filtered_df[mask]
+    if 'drug' in filters:
+        drug_series = get_normalized('drug_name')
+        mask = build_mask(drug_series, filters['drug'])
+        if mask is not None:
+            apply_mask(mask)
     
     # Reaction filter
-    if 'reaction' in filters and 'reaction' in filtered_df.columns:
-        reaction_filter = filters['reaction']
-        if isinstance(reaction_filter, list):
-            mask = filtered_df['reaction'].apply(
-                lambda x: any(normalize_text(r) in normalize_text(str(x)) for r in reaction_filter)
-            )
-        else:
-            mask = filtered_df['reaction'].apply(
-                lambda x: normalize_text(reaction_filter) in normalize_text(str(x))
-            )
-        filtered_df = filtered_df[mask]
+    if 'reaction' in filters:
+        reaction_series = get_normalized('reaction')
+        mask = build_mask(reaction_series, filters['reaction'])
+        if mask is not None:
+            apply_mask(mask)
     
     # Exclude negated reactions
-    if 'exclude_reaction' in filters and 'reaction' in filtered_df.columns:
-        exclude_list = filters['exclude_reaction']
-        if isinstance(exclude_list, list):
-            # Exclude any reaction that contains any of the excluded terms
-            exclude_mask = filtered_df['reaction'].apply(
-                lambda x: not any(
-                    normalize_text(ex) in normalize_text(str(x)) 
-                    for ex in exclude_list
-                )
-            )
-        else:
-            # Single exclusion term
-            exclude_mask = filtered_df['reaction'].apply(
-                lambda x: normalize_text(exclude_list) not in normalize_text(str(x))
-            )
-        filtered_df = filtered_df[exclude_mask]
+    if 'exclude_reaction' in filters:
+        reaction_series = get_normalized('reaction')
+        mask = build_mask(reaction_series, filters['exclude_reaction'], invert=True)
+        if mask is not None:
+            apply_mask(mask)
     
     # Age filter
     if ('age_min' in filters or 'age_max' in filters) and 'age' in filtered_df.columns:
         age_values = filtered_df['age'].apply(extract_age)
         if 'age_min' in filters:
-            filtered_df = filtered_df[age_values >= filters['age_min']]
+            apply_mask(age_values >= filters['age_min'])
         if 'age_max' in filters:
-            filtered_df = filtered_df[age_values <= filters['age_max']]
+            apply_mask(age_values <= filters['age_max'])
     
     # Sex filter
-    if 'sex' in filters and 'sex' in filtered_df.columns:
-        sex_filter = normalize_text(filters['sex'])
-        mask = filtered_df['sex'].apply(lambda x: normalize_text(str(x)) == sex_filter)
-        filtered_df = filtered_df[mask]
+    if 'sex' in filters:
+        sex_series = get_normalized('sex')
+        if sex_series is not None:
+            target = normalize_text(filters['sex'])
+            mask = sex_series == target
+            apply_mask(mask)
     
     # Country filter
-    if 'country' in filters and 'country' in filtered_df.columns:
-        country_filter = normalize_text(filters['country'])
-        mask = filtered_df['country'].apply(
-            lambda x: normalize_text(str(x)) == country_filter or 
-                     country_filter in normalize_text(str(x))
-        )
-        filtered_df = filtered_df[mask]
+    if 'country' in filters:
+        country_series = get_normalized('country')
+        if country_series is not None:
+            target = normalize_text(filters['country'])
+            mask = country_series.str.contains(re.escape(target), na=False)
+            apply_mask(mask)
     
     # Seriousness filter
-    if 'seriousness' in filters and filters['seriousness'] and 'seriousness' in filtered_df.columns:
-        mask = filtered_df['seriousness'].apply(
-            lambda x: normalize_text(str(x)) in ['1', 'yes', 'y', 'true', 'serious']
-        )
-        filtered_df = filtered_df[mask]
+    if filters.get('seriousness') and 'seriousness' in filtered_df.columns:
+        serious_series = get_normalized('seriousness')
+        if serious_series is not None:
+            allowed = {'1', 'yes', 'y', 'true', 'serious'}
+            mask = serious_series.isin(allowed)
+            apply_mask(mask)
     
     # Date filters
-    if 'date_from' in filters and 'onset_date' in filtered_df.columns:
-        date_from = parse_date(filters['date_from'])
-        if date_from:
-            date_values = filtered_df['onset_date'].apply(parse_date)
-            filtered_df = filtered_df[date_values >= date_from]
-    
-    if 'date_to' in filters and 'onset_date' in filtered_df.columns:
-        date_to = parse_date(filters['date_to'])
-        if date_to:
-            date_values = filtered_df['onset_date'].apply(parse_date)
-            filtered_df = filtered_df[date_values <= date_to]
+    if 'onset_date' in filtered_df.columns and ('date_from' in filters or 'date_to' in filters):
+        date_values = pd.to_datetime(filtered_df['onset_date'], errors='coerce')
+        if 'date_from' in filters:
+            date_from = parse_date(filters['date_from'])
+            if date_from:
+                apply_mask(date_values >= date_from)
+        if 'date_to' in filters:
+            date_to = parse_date(filters['date_to'])
+            if date_to:
+                apply_mask(date_values <= date_to)
     
     return filtered_df
 
@@ -336,4 +355,63 @@ def get_drug_event_combinations(df: pd.DataFrame, min_cases: int = 3) -> List[Di
         }
         for _, row in combinations.iterrows()
     ]
+
+
+def get_data_quality_metrics(df: pd.DataFrame) -> Dict:
+    """
+    Compute basic data quality metrics for the normalized dataset.
+    """
+    if df is None or df.empty:
+        return {
+            'row_count': 0,
+            'column_count': 0,
+            'missing_percent': {},
+            'duplicate_cases': 0,
+        }
+    
+    key_fields = [
+        'case_id', 'drug_name', 'reaction', 'age', 'sex',
+        'country', 'seriousness', 'onset_date', 'report_date'
+    ]
+    missing_percent = {}
+    for field in key_fields:
+        if field in df.columns:
+            missing_percent[field] = round(float(df[field].isna().mean() * 100), 2)
+    
+    duplicate_cases = 0
+    if 'case_id' in df.columns:
+        duplicate_cases = int(df['case_id'].duplicated().sum())
+    
+    return {
+        'row_count': len(df),
+        'column_count': len(df.columns),
+        'missing_percent': missing_percent,
+        'duplicate_cases': duplicate_cases,
+    }
+
+
+def describe_signal(prr_ror: Dict) -> str:
+    """
+    Provide a natural language explanation of PRR/ROR results.
+    """
+    if not prr_ror:
+        return ""
+    a = prr_ror.get('a', 0)
+    b = prr_ror.get('b', 0)
+    c = prr_ror.get('c', 0)
+    d = prr_ror.get('d', 0)
+    prr = prr_ror.get('prr', 0)
+    ror = prr_ror.get('ror', 0)
+    seriousness_hint = ""
+    if prr >= 2 and ror >= 2:
+        seriousness_hint = "This combination meets typical disproportionality thresholds (PRR/ROR ≥ 2)."
+    elif prr >= 1.5 or ror >= 1.5:
+        seriousness_hint = "Signals are elevated but below the usual PRR/ROR=2 threshold."
+    else:
+        seriousness_hint = "Disproportionality metrics are modest; interpret with caution."
+    return (
+        f"{a} cases report both the drug and reaction, with {b} additional reports for the drug alone "
+        f"and {c} reports for the reaction with other drugs. PRR={prr:.2f}, ROR={ror:.2f}. "
+        f"{seriousness_hint}"
+    )
 

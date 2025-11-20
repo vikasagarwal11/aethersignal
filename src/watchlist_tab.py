@@ -5,8 +5,8 @@ The killer feature for safety teams: monitor multiple drugs simultaneously
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import signal_stats
-import quantum_ranking
+from src import signal_stats
+from src import quantum_ranking
 
 
 def show_watchlist_tab():

@@ -60,20 +60,21 @@ def render_sidebar():
             )
             country_filter = st.text_input("Country", key="sidebar_country")
 
-        with st.expander("Date & seriousness", expanded=False):
+        with st.expander("Date & seriousness", expanded=True):
             seriousness_filter = st.checkbox("Serious cases only", key="sidebar_serious")
 
+            st.markdown("**📅 Date Range Filter**")
             enable_date = st.checkbox(
-                "Filter by date range", key="sidebar_enable_date"
+                "Filter by date range", key="sidebar_enable_date", value=False
             )
             date_from = None
             date_to = None
             if enable_date:
                 c1, c2 = st.columns(2)
                 with c1:
-                    date_from = st.date_input("From", key="sidebar_date_from")
+                    date_from = st.date_input("From date", key="sidebar_date_from", value=None)
                 with c2:
-                    date_to = st.date_input("To", key="sidebar_date_to")
+                    date_to = st.date_input("To date", key="sidebar_date_to", value=None)
 
         apply_adv = st.button("Apply advanced filters", use_container_width=True)
         clear_adv = st.button("Clear filters", use_container_width=True)
@@ -174,6 +175,18 @@ def render_sidebar():
         ),
     )
     st.session_state.quantum_enabled = quantum_enabled
+    
+    st.markdown("---")
+    st.markdown("### 🌐 Social AE signals")
+    include_social_ae = st.checkbox(
+        "Include Social AE signals",
+        value=st.session_state.get("include_social_ae", False),
+        help=(
+            "Merge social media adverse event signals with FAERS data. "
+            "Social signals are weighted at 40% (observational, not validated)."
+        ),
+    )
+    st.session_state.include_social_ae = include_social_ae
 
     st.markdown("---")
     

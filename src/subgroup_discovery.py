@@ -6,8 +6,8 @@ Automatically discovers significant subgroups (age/sex/country) for drug-event s
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from signal_stats import calculate_prr_ror, apply_filters
-from utils import extract_age
+from src.signal_stats import calculate_prr_ror, apply_filters
+from src.utils import extract_age
 
 
 def discover_subgroups(

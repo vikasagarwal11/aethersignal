@@ -4,6 +4,7 @@ Handles all result tabs: Overview, Signals, Trends, Cases, Report.
 """
 
 import json
+import time
 from datetime import datetime
 from typing import Dict, Optional
 from io import BytesIO
@@ -25,7 +26,16 @@ from src.app_helpers import (
     format_reaction_with_meddra,
     render_filter_chips,
 )
-from src.utils import normalize_text
+from src.utils import normalize_text, safe_divide
+
+
+def _log_perf_event(label: str, duration: float, extra: Optional[Dict] = None) -> None:
+    if not st.session_state.get("analytics_enabled"):
+        return
+    payload = {"label": label, "duration_ms": round(duration * 1000, 2)}
+    if extra:
+        payload.update(extra)
+    analytics.log_event("perf_metric", payload)
 
 
 def display_query_results(filters: Dict, query_text: str, normalized_df: pd.DataFrame):
@@ -89,7 +99,9 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
             st.session_state.query_history = st.session_state.query_history[-20:]
 
     # Apply filters
+    start_time = time.perf_counter()
     filtered_df = signal_stats.apply_filters(normalized_df, filters)
+    _log_perf_event("apply_filters", time.perf_counter() - start_time, {"rows": len(normalized_df)})
     if filtered_df.empty:
         st.warning("No cases match the specified criteria.")
         if st.session_state.get("analytics_enabled"):
@@ -97,7 +109,9 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
         return
 
     # Summary stats (cached)
+    start_time = time.perf_counter()
     summary = cached_get_summary_stats(filtered_df, normalized_df)
+    _log_perf_event("summary_stats", time.perf_counter() - start_time, {"matches": len(filtered_df)})
 
     overview_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
         ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]
@@ -301,6 +315,9 @@ def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame,
                     else:
                         st.metric("P-value", "N/A")
                 summary["prr_ror"] = prr_ror
+                explanation = signal_stats.describe_signal(prr_ror)
+                if explanation:
+                    st.info(explanation)
                 
                 # Advanced statistics
                 if prr_ror:
@@ -588,9 +605,26 @@ def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame,
         if st.session_state.get("quantum_enabled"):
             st.markdown("---")
             with st.spinner("Calculating quantum-inspired ranking…"):
+                start_time = time.perf_counter()
+                
+                # Enhance with Social AE if enabled
+                if st.session_state.get("include_social_ae", False):
+                    try:
+                        from src.social_ae.social_ae_integration import enhance_quantum_scores_with_social, load_social_ae_data
+                        
+                        social_ae_df = load_social_ae_data(days_back=30, use_supabase=True)
+                        combos = enhance_quantum_scores_with_social(
+                            combos,
+                            social_ae_df,
+                            social_weight=0.4
+                        )
+                    except Exception:
+                        pass  # Continue without social enhancement if it fails
+                
                 ranked = quantum_ranking.quantum_rerank_signals(
                     combos, total_cases=len(normalized_df)
                 )
+                _log_perf_event("quantum_rank", time.perf_counter() - start_time, {"pairs": len(combos)})
 
             st.markdown(
                 "**Quantum-inspired ranking (deterministic heuristic; no real hardware in demo):**"
@@ -611,7 +645,8 @@ def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame,
                         meddra_pt = matches['reaction_meddra'].iloc[0] if 'reaction_meddra' in matches.columns else None
                 
                 display_reaction = format_reaction_with_meddra(reaction, meddra_pt)
-                q_data.append({
+                
+                row_data = {
                     "Rank": c.get("quantum_rank", i + 1),
                     "Drug": c["drug"],
                     "Reaction": display_reaction,
@@ -619,7 +654,13 @@ def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame,
                     "Quantum score": round(c.get("quantum_score", 0.0), 3),
                     "PRR": f"{c.get('prr', 0):.2f}" if "prr" in c else "N/A",
                     "ROR": f"{c.get('ror', 0):.2f}" if "ror" in c else "N/A",
-                })
+                }
+                
+                # Add social count if available
+                if "social_count" in c:
+                    row_data["Social signals"] = c["social_count"]
+                
+                q_data.append(row_data)
             q_df = pd.DataFrame(q_data)
             st.dataframe(q_df, use_container_width=True, hide_index=True)
 
@@ -661,6 +702,26 @@ def _render_trends_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame):
             paper_bgcolor="white",
         )
         st.plotly_chart(fig, use_container_width=True)
+        if len(trend_df) >= 2:
+            latest = trend_df.iloc[-1]
+            previous = trend_df.iloc[-2]
+            delta = latest["Count"] - previous["Count"]
+            pct = safe_divide(delta, previous["Count"], 0) * 100
+            prev_label = previous["Period"].strftime("%b %Y")
+            st.metric(
+                "Latest vs prior period",
+                f"{int(latest['Count'])}",
+                f"{delta:+} ({pct:.1f}%) vs {prev_label}",
+            )
+        if len(trend_df) >= 12:
+            latest_window = trend_df.iloc[-12:]["Count"].sum()
+            prior_window = trend_df.iloc[-24:-12]["Count"].sum() if len(trend_df) >= 24 else None
+            if prior_window:
+                pct = safe_divide(latest_window - prior_window, prior_window, 0) * 100
+                st.caption(
+                    f"Last 12 periods: {latest_window:,} cases vs {prior_window:,} in the previous 12 "
+                    f"({pct:+.1f}%)."
+                )
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Co-reactions

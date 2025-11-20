@@ -24,6 +24,7 @@ def render_nl_query_tab(normalized_df):
             "Find cases for drug semaglutide with reaction pancreatitis since 2021",
             "Show all cases of optic neuritis in women age 18-45 treated with monoclonal antibodies",
             "Find serious cases for patients age 18-65 with drug ibuprofen and reaction nausea in United States",
+            "Show cases with drug aspirin since 2020-01-01 until 2023-12-31",
         ]
         preset = st.selectbox(
             "Try one:",
@@ -59,6 +60,46 @@ def render_nl_query_tab(normalized_df):
                         if st.button(f"📝 {query_preview} ({timestamp})", key=f"history_{i}", use_container_width=True):
                             st.session_state.query_text = q_entry["query_text"]  # Fill the text area
                             st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### 📁 Saved queries")
+        saved_queries = st.session_state.get("saved_queries", [])
+        if saved_queries:
+            saved_names = [""] + [sq["name"] for sq in saved_queries]
+            selected_name = st.selectbox(
+                "Load saved query",
+                saved_names,
+                key="saved_query_select",
+            )
+            if selected_name:
+                selected = next((sq for sq in saved_queries if sq["name"] == selected_name), None)
+                if selected:
+                    st.session_state.query_text = selected["query_text"]
+                    st.session_state.last_query_text = selected["query_text"]
+                    st.session_state.last_filters = selected["filters"]
+                    st.session_state.last_query_source = "saved"
+                    st.session_state.show_results = True
+                    st.success(f"Loaded saved query '{selected_name}'.")
+                    st.experimental_rerun()
+        save_name = st.text_input("Name current query", key="save_query_name")
+        can_save = bool(st.session_state.get("last_filters") and st.session_state.get("last_query_text"))
+        if st.button("💾 Save current query", key="save_query_button", use_container_width=True, disabled=not can_save):
+            if not save_name.strip():
+                st.warning("Enter a name before saving.")
+            else:
+                saved_queries = st.session_state.get("saved_queries", [])
+                if any(sq["name"] == save_name.strip() for sq in saved_queries):
+                    st.warning("A saved query with that name already exists.")
+                else:
+                    saved_queries.append(
+                        {
+                            "name": save_name.strip(),
+                            "query_text": st.session_state.get("last_query_text", ""),
+                            "filters": st.session_state.get("last_filters", {}),
+                        }
+                    )
+                    st.session_state.saved_queries = saved_queries[-15:]
+                    st.success(f"Saved query '{save_name.strip()}'")
 
     with right:
         st.markdown("#### 💬 Natural language search")
@@ -96,9 +137,10 @@ def render_nl_query_tab(normalized_df):
             key="query_input",
             placeholder=(
                 "e.g. 'Show all cases with drug aspirin and reaction headache' or "
-                "'Find serious cases for patients age 18–65 in Japan since 2020'"
+                "'Find serious cases for patients age 18–65 in Japan since 2020' or "
+                "'Cases with drug X from 2020-01-01 to 2023-12-31'"
             ),
-            help="Tips: Use 'drug X', 'reaction Y', 'age 18-65', 'serious', 'country US', 'since 2020'",
+            help="Tips: Use 'drug X', 'reaction Y', 'age 18-65', 'serious', 'country US', 'since 2020', 'from 2020-01-01', 'until 2023-12-31'",
         )
         st.markdown("</div>", unsafe_allow_html=True)
         

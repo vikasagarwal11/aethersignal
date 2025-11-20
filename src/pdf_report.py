@@ -1,17 +1,102 @@
 """
 PDF Report Generation for AetherSignal
-Creates one-page PDF summaries using fpdf2.
+Creates one-page PDF summaries using fpdf2 with enhanced visualizations.
 """
 
 from fpdf import FPDF
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import io
+import math
+
+
+def _draw_signal_strength_bar(pdf: FPDF, x: float, y: float, width: float, height: float, 
+                               value: float, max_value: float = 10.0) -> None:
+    """
+    Draw a signal strength meter bar with traffic light colors.
+    
+    Args:
+        pdf: FPDF instance
+        x, y: Position
+        width: Bar width
+        height: Bar height
+        value: Signal strength value
+        max_value: Maximum value for scaling
+    """
+    # Normalize value to 0-1 range
+    normalized = min(value / max_value, 1.0)
+    bar_width = width * normalized
+    
+    # Traffic light colors: green (low) -> yellow -> orange -> red (high)
+    if value < 2.0:
+        color = (34, 197, 94)  # Green
+    elif value < 4.0:
+        color = (234, 179, 8)  # Yellow
+    elif value < 6.0:
+        color = (249, 115, 22)  # Orange
+    else:
+        color = (239, 68, 68)  # Red
+    
+    # Draw background (gray)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.rect(x, y, width, height, 'F')
+    
+    # Draw filled portion
+    pdf.set_fill_color(*color)
+    pdf.rect(x, y, bar_width, height, 'F')
+    
+    # Draw border
+    pdf.set_draw_color(203, 213, 225)
+    pdf.rect(x, y, width, height, 'D')
+
+
+def _draw_table_row(pdf: FPDF, x: float, y: float, width: float, height: float,
+                    cells: List[Tuple[str, float]], header: bool = False) -> None:
+    """
+    Draw a table row with multiple cells.
+    
+    Args:
+        pdf: FPDF instance
+        x, y: Starting position
+        width: Total row width
+        height: Row height
+        cells: List of (text, relative_width) tuples
+        header: Whether this is a header row
+    """
+    if header:
+        pdf.set_fill_color(241, 245, 249)
+        pdf.set_text_color(15, 23, 42)
+        pdf.set_font('Arial', 'B', 9)
+    else:
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font('Arial', '', 9)
+    
+    # Draw row background
+    pdf.rect(x, y, width, height, 'F')
+    
+    # Draw cells
+    current_x = x
+    for text, rel_width in cells:
+        cell_width = width * rel_width
+        pdf.set_xy(current_x + 2, y + height / 2 - 2)
+        pdf.cell(cell_width - 4, height, text, 0, 0, 'L')
+        current_x += cell_width
+    
+    # Draw borders
+    pdf.set_draw_color(226, 232, 240)
+    pdf.rect(x, y, width, height, 'D')
+    # Vertical dividers
+    current_x = x
+    for i, (_, rel_width) in enumerate(cells):
+        if i > 0:
+            pdf.line(current_x, y, current_x, y + height)
+        current_x += width * rel_width
 
 
 def build_pdf_report(summary_dict: Dict) -> bytes:
     """
-    Build a one-page PDF summary report.
+    Build a one-page PDF summary report with enhanced visualizations.
     
     Args:
         summary_dict: Dictionary containing:
@@ -36,38 +121,48 @@ def build_pdf_report(summary_dict: Dict) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Colors: Blue/white pharma style
-    blue_color = (0, 51, 102)  # Dark blue
-    light_blue = (173, 216, 230)  # Light blue
-    gray_color = (128, 128, 128)
+    # Brand colors: Enterprise blue + slate
+    primary_blue = (30, 64, 175)  # #1e40af
+    secondary_blue = (37, 99, 235)  # #2563eb
+    light_blue = (191, 219, 254)  # #bfdbfe
+    slate_gray = (148, 163, 184)  # #94a3b8
+    dark_slate = (15, 23, 42)  # #0f172a
+    gray_color = (100, 116, 139)  # #64748b
     
-    # Header
-    pdf.set_fill_color(*blue_color)
-    pdf.rect(0, 0, 210, 30, 'F')
+    # Header with gradient effect
+    pdf.set_fill_color(*primary_blue)
+    pdf.rect(0, 0, 210, 32, 'F')
+    
+    # Subtle gradient overlay
+    pdf.set_fill_color(*secondary_blue)
+    pdf.rect(0, 0, 210, 8, 'F')
     
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font('Arial', 'B', 24)
+    pdf.set_font('Arial', 'B', 22)
     pdf.set_xy(10, 10)
     pdf.cell(0, 10, 'AetherSignal - Quantum PV Explorer', 0, 1, 'L')
     
-    pdf.set_font('Arial', '', 10)
-    pdf.set_xy(10, 20)
+    pdf.set_font('Arial', '', 9)
+    pdf.set_xy(10, 22)
     generated_at = summary_dict.get('generated_at', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     pdf.cell(0, 5, f'Report Generated: {generated_at}', 0, 1, 'L')
     
-    # Disclaimer
-    pdf.set_text_color(200, 0, 0)
-    pdf.set_font('Arial', 'I', 8)
-    pdf.set_xy(10, 35)
-    pdf.multi_cell(190, 4, 
+    # Disclaimer box
+    pdf.set_fill_color(255, 249, 230)  # Light yellow background
+    pdf.set_draw_color(246, 173, 85)  # Orange border
+    pdf.rect(10, 36, 190, 8, 'FD')
+    pdf.set_text_color(116, 66, 16)  # Dark brown text
+    pdf.set_font('Arial', 'I', 7)
+    pdf.set_xy(12, 38)
+    pdf.multi_cell(186, 3, 
                    'DISCLAIMER: Exploratory tool only - not for regulatory decision-making. '
                    'Spontaneous report data are subject to under-reporting and bias; '
                    'no incidence or causality implied.', 0, 'L')
     
     # Reset text color
-    pdf.set_text_color(0, 0, 0)
+    pdf.set_text_color(*dark_slate)
     
-    y_pos = 50
+    y_pos = 48
     
     # Query Section
     pdf.set_font('Arial', 'B', 12)
@@ -106,41 +201,95 @@ def build_pdf_report(summary_dict: Dict) -> bytes:
     
     y_pos += 25
     
-    # PRR/ROR Section (if available)
+    # PRR/ROR Section with Signal Strength Meter (if available)
     prr_ror = summary_dict.get('prr_ror')
     if prr_ror:
+        # Section header with background
+        pdf.set_fill_color(241, 245, 249)
+        pdf.rect(10, y_pos, 190, 8, 'F')
+        pdf.set_text_color(*primary_blue)
         pdf.set_font('Arial', 'B', 12)
-        pdf.set_xy(10, y_pos)
-        pdf.cell(0, 8, 'Signal Detection Metrics', 0, 1, 'L')
-        
-        pdf.set_font('Arial', '', 10)
+        pdf.set_xy(12, y_pos + 2)
+        pdf.cell(0, 6, 'Signal Detection Metrics', 0, 1, 'L')
         y_pos += 10
         
         drug = prr_ror.get('drug', 'N/A')
         reaction = prr_ror.get('reaction', 'N/A')
+        pdf.set_text_color(*dark_slate)
+        pdf.set_font('Arial', 'B', 9)
         pdf.set_xy(10, y_pos)
         pdf.cell(0, 5, f'Drug: {drug}', 0, 1, 'L')
         pdf.set_xy(10, y_pos + 5)
         pdf.cell(0, 5, f'Reaction: {reaction}', 0, 1, 'L')
+        y_pos += 12
+        
+        # PRR/ROR Table
+        table_y = y_pos
+        _draw_table_row(pdf, 10, table_y, 190, 7, [
+            ('Metric', 0.25),
+            ('Value', 0.25),
+            ('95% CI Lower', 0.25),
+            ('95% CI Upper', 0.25)
+        ], header=True)
         
         prr = prr_ror.get('prr', 0)
         prr_ci_lower = prr_ror.get('prr_ci_lower', 0)
         prr_ci_upper = prr_ror.get('prr_ci_upper', 0)
-        pdf.set_xy(10, y_pos + 10)
-        pdf.cell(0, 5, f'PRR: {prr:.2f} (95% CI: {prr_ci_lower:.2f} - {prr_ci_upper:.2f})', 0, 1, 'L')
+        _draw_table_row(pdf, 10, table_y + 7, 190, 6, [
+            ('PRR', 0.25),
+            (f'{prr:.2f}', 0.25),
+            (f'{prr_ci_lower:.2f}', 0.25),
+            (f'{prr_ci_upper:.2f}', 0.25)
+        ], header=False)
         
         ror = prr_ror.get('ror', 0)
         ror_ci_lower = prr_ror.get('ror_ci_lower', 0)
         ror_ci_upper = prr_ror.get('ror_ci_upper', 0)
-        pdf.set_xy(10, y_pos + 15)
-        pdf.cell(0, 5, f'ROR: {ror:.2f} (95% CI: {ror_ci_lower:.2f} - {ror_ci_upper:.2f})', 0, 1, 'L')
+        _draw_table_row(pdf, 10, table_y + 13, 190, 6, [
+            ('ROR', 0.25),
+            (f'{ror:.2f}', 0.25),
+            (f'{ror_ci_lower:.2f}', 0.25),
+            (f'{ror_ci_upper:.2f}', 0.25)
+        ], header=False)
+        
+        y_pos = table_y + 22
+        
+        # Signal Strength Meters
+        pdf.set_font('Arial', 'B', 9)
+        pdf.set_text_color(*dark_slate)
+        pdf.set_xy(10, y_pos)
+        pdf.cell(0, 5, 'Signal Strength:', 0, 1, 'L')
+        y_pos += 7
+        
+        # PRR Signal Strength
+        pdf.set_font('Arial', '', 8)
+        pdf.set_xy(10, y_pos)
+        pdf.cell(40, 4, 'PRR Signal:', 0, 0, 'L')
+        _draw_signal_strength_bar(pdf, 50, y_pos, 60, 4, prr, max_value=10.0)
+        pdf.set_xy(112, y_pos)
+        pdf.set_font('Arial', 'B', 8)
+        pdf.cell(0, 4, f'{prr:.2f}', 0, 1, 'L')
+        y_pos += 7
+        
+        # ROR Signal Strength
+        pdf.set_font('Arial', '', 8)
+        pdf.set_xy(10, y_pos)
+        pdf.cell(40, 4, 'ROR Signal:', 0, 0, 'L')
+        _draw_signal_strength_bar(pdf, 50, y_pos, 60, 4, ror, max_value=10.0)
+        pdf.set_xy(112, y_pos)
+        pdf.set_font('Arial', 'B', 8)
+        pdf.cell(0, 4, f'{ror:.2f}', 0, 1, 'L')
+        y_pos += 5
         
         p_value = prr_ror.get('p_value')
         if p_value:
-            pdf.set_xy(10, y_pos + 20)
-            pdf.cell(0, 5, f'P-value: {p_value:.4f}', 0, 1, 'L')
+            pdf.set_font('Arial', '', 8)
+            pdf.set_xy(10, y_pos)
+            significance = "***" if p_value < 0.001 else "**" if p_value < 0.01 else "*" if p_value < 0.05 else "ns"
+            pdf.cell(0, 4, f'P-value: {p_value:.4f} ({significance})', 0, 1, 'L')
+            y_pos += 5
         
-        y_pos += 35
+        y_pos += 3
     
     # Top Drugs Section
     top_drugs = summary_dict.get('top_drugs', {})
@@ -200,11 +349,16 @@ def build_pdf_report(summary_dict: Dict) -> bytes:
             pdf.set_xy(10, y_pos + 10)
             pdf.cell(0, 5, f'Age Range: {age_stats["min"]:.0f} - {age_stats["max"]:.0f} years', 0, 1, 'L')
     
-    # Footer
+    # Footer with brand colors
+    pdf.set_fill_color(241, 245, 249)
+    pdf.rect(0, 280, 210, 17, 'F')
+    pdf.set_draw_color(*slate_gray)
+    pdf.line(10, 280, 200, 280)
+    
     pdf.set_text_color(*gray_color)
-    pdf.set_font('Arial', 'I', 8)
-    pdf.set_xy(10, 280)
-    pdf.cell(0, 5, 'AetherSignal - Quantum PV Explorer | Exploratory Tool Only', 0, 1, 'C')
+    pdf.set_font('Arial', 'I', 7)
+    pdf.set_xy(10, 285)
+    pdf.cell(0, 4, 'AetherSignal - Quantum PV Explorer | Exploratory Tool Only | Not for Regulatory Decision-Making', 0, 1, 'C')
     
     # Convert to bytes
     return pdf.output(dest='S').encode('latin-1')

@@ -9,11 +9,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-ANALYTICS_DIR = Path("analytics")
-ANALYTICS_DIR.mkdir(exist_ok=True)
+try:
+    ANALYTICS_DIR = Path("analytics")
+    ANALYTICS_DIR.mkdir(exist_ok=True)
+    ANALYTICS_STORAGE_AVAILABLE = True
+except Exception:
+    ANALYTICS_DIR = None
+    ANALYTICS_STORAGE_AVAILABLE = False
 
-USAGE_LOG_FILE = ANALYTICS_DIR / "usage_log.csv"
-STATS_FILE = ANALYTICS_DIR / "usage_stats.json"
+USAGE_LOG_FILE = ANALYTICS_DIR / "usage_log.csv" if ANALYTICS_STORAGE_AVAILABLE else None
+STATS_FILE = ANALYTICS_DIR / "usage_stats.json" if ANALYTICS_STORAGE_AVAILABLE else None
+MAX_USAGE_EVENTS = 5000
 
 
 def init_session_id() -> str:
@@ -35,6 +41,8 @@ def log_event(event_type: str, metadata: Optional[Dict] = None) -> None:
         event_type: Type of event (upload, query, pdf_download, etc.)
         metadata: Optional metadata dict (no PII)
     """
+    if not ANALYTICS_STORAGE_AVAILABLE or USAGE_LOG_FILE is None:
+        return
     try:
         session_id = init_session_id()
         timestamp = datetime.now().isoformat()
@@ -53,6 +61,7 @@ def log_event(event_type: str, metadata: Optional[Dict] = None) -> None:
             if not file_exists:
                 writer.writeheader()
             writer.writerow(row)
+        _truncate_usage_log()
     except Exception:
         # Silently fail - analytics should never break the app
         pass
@@ -65,6 +74,13 @@ def get_usage_stats() -> Dict:
     Returns:
         Dict with usage statistics
     """
+    if not ANALYTICS_STORAGE_AVAILABLE or USAGE_LOG_FILE is None:
+        return {
+            "total_sessions": 0,
+            "total_events": 0,
+            "events_by_type": {},
+            "recent_activity": [],
+        }
     try:
         if not USAGE_LOG_FILE.exists():
             return {
@@ -105,4 +121,26 @@ def get_usage_stats() -> Dict:
             "events_by_type": {},
             "recent_activity": [],
         }
+
+
+def _truncate_usage_log(max_events: int = MAX_USAGE_EVENTS) -> None:
+    """
+    Keep usage log to a manageable size by retaining only the most recent events.
+    """
+    if not ANALYTICS_STORAGE_AVAILABLE or USAGE_LOG_FILE is None:
+        return
+    try:
+        if not USAGE_LOG_FILE.exists():
+            return
+        with open(USAGE_LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) <= max_events + 1:  # +1 for header
+            return
+        header, entries = lines[0], lines[1:]
+        trimmed = entries[-max_events:]
+        with open(USAGE_LOG_FILE, "w", encoding="utf-8") as f:
+            f.write(header)
+            f.writelines(trimmed)
+    except Exception:
+        pass
 

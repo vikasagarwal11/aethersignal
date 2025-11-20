@@ -4,6 +4,8 @@ Extracted from app.py for better modularity.
 """
 
 import json
+import os
+import tempfile
 import zipfile
 from datetime import datetime
 from typing import Dict, List, Optional, Set
@@ -30,6 +32,7 @@ def initialize_session():
         "show_results": False,
         "query_history": [],
         "analytics_enabled": True,
+        "saved_queries": [],
     }
 
     for key, default in DEFAULT_SESSION_KEYS.items():
@@ -37,15 +40,22 @@ def initialize_session():
             st.session_state[key] = default
 
 
-def load_all_files(uploaded_files) -> Optional[pd.DataFrame]:
+def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFrame]:
     """
     Best-effort loader: tries FAERS helpers, PDF extraction, and CSV/Excel.
+    
+    Args:
+        uploaded_files: List of uploaded file objects
+        progress_callback: Optional callback function(current_file, total_files, file_name, file_size_bytes)
     """
     if not uploaded_files:
         return None
 
     frames: List[pd.DataFrame] = []
     processed_files: Set[int] = set()
+    total_files = len(uploaded_files)
+    current_file = 0
+    faers_loader.clear_loader_warnings()
 
     def _reset_file_pointer(file_obj):
         try:
@@ -57,21 +67,102 @@ def load_all_files(uploaded_files) -> Optional[pd.DataFrame]:
     faers_like_files = [f for f in uploaded_files if f.name.lower().endswith((".zip", ".txt"))]
     if faers_like_files:
         for f in faers_like_files:
+            current_file += 1
+            if progress_callback:
+                progress_callback(current_file, total_files, f.name, f.size)
+            
             try:
+                # Check for XML files in ZIP before attempting to load
                 if f.name.lower().endswith(".zip"):
-                    df = faers_loader.load_faers_zip(f)
+                    # Peek into ZIP to check for XML files
+                    _reset_file_pointer(f)
+                    try:
+                        with zipfile.ZipFile(f, "r") as z:
+                            zip_contents = z.namelist()
+                            xml_files = [fn for fn in zip_contents if fn.lower().endswith(".xml")]
+                            if xml_files:
+                                # XML detected - provide specific error
+                                st.warning(
+                                    f"⚠️ **XML format detected**: The file `{f.name}` contains XML files, which are not currently supported. "
+                                    f"Found: {', '.join(xml_files[:3])}{'...' if len(xml_files) > 3 else ''}\n\n"
+                                    "**Supported formats:**\n"
+                                    "- FAERS ASCII files (DEMO, DRUG, REAC, OUTC, THER, INDI, RPSR as `.txt`)\n"
+                                    "- CSV files\n"
+                                    "- Excel files (.xlsx, .xls)\n"
+                                    "- PDF files (tabular only)\n\n"
+                                    "**To use FAERS data:** Download the ASCII format (not XML) from FDA's website."
+                                )
+                                processed_files.add(id(f))
+                                continue  # Skip this file
+                    except Exception:
+                        pass  # If ZIP check fails, continue to try loading
+                    
+                    # Try to load as FAERS ZIP
+                    # load_faers_zip expects a file path, so we need to write the UploadedFile to temp first
+                    _reset_file_pointer(f)
+                    temp_zip = None
+                    try:
+                        # Write UploadedFile to temporary file
+                        temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+                        temp_zip.write(f.getbuffer())
+                        temp_zip.close()
+                        df = faers_loader.load_faers_zip(temp_zip.name)
+                    except Exception:
+                        df = None
+                    finally:
+                        if temp_zip and os.path.exists(temp_zip.name):
+                            try:
+                                os.unlink(temp_zip.name)
+                            except:
+                                pass
                 else:
-                    df = faers_loader.load_faers_file(f)
+                    # For individual .txt files, write to temp file first (load_faers_file expects Path)
+                    _reset_file_pointer(f)
+                    temp_txt = None
+                    try:
+                        temp_txt = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+                        temp_txt.write(f.getbuffer())
+                        temp_txt.close()
+                        df = faers_loader.load_faers_file(temp_txt.name)
+                    except Exception as e:
+                        df = None
+                        # Show detailed error for individual files
+                        st.error(f"❌ Error loading FAERS file `{f.name}`: {str(e)[:300]}")
+                    finally:
+                        if temp_txt and os.path.exists(temp_txt.name):
+                            try:
+                                os.unlink(temp_txt.name)
+                            except:
+                                pass
+                
                 if df is not None and not df.empty:
                     frames.append(df)
                     processed_files.add(id(f))
                     continue
-            except Exception:
+                else:
+                    # File was processed but returned None or empty - log it
+                    if f.name.lower().endswith(".zip"):
+                        st.warning(f"⚠️ Could not parse FAERS data from `{f.name}`. Check if it contains valid FAERS ASCII files.")
+            except Exception as e:
+                # Log the error for debugging
+                import traceback
+                error_msg = str(e)
+                if "xml" in error_msg.lower() or "xml" in f.name.lower():
+                    st.warning(f"⚠️ XML format detected in `{f.name}`. XML files are not supported. Please use FAERS ASCII format (.txt files).")
+                else:
+                    # Show actual error for debugging
+                    st.error(f"❌ Error loading `{f.name}`: {error_msg[:200]}")
                 pass  # will fall back to generic parsing
 
     # 2) PDFs via faers_loader.load_pdf_files
-    pdf_files = [f for f in uploaded_files if f.name.lower().endswith(".pdf")]
+    pdf_files = [f for f in uploaded_files if f.name.lower().endswith(".pdf") and id(f) not in processed_files]
     if pdf_files:
+        # Track progress for all PDF files at once
+        for f in pdf_files:
+            current_file += 1
+            if progress_callback:
+                progress_callback(current_file, total_files, f.name, f.size)
+            processed_files.add(id(f))
         try:
             pdf_df = faers_loader.load_pdf_files(pdf_files)
             if pdf_df is not None and not pdf_df.empty:
@@ -86,6 +177,11 @@ def load_all_files(uploaded_files) -> Optional[pd.DataFrame]:
         name = file.name.lower()
         if name.endswith(".pdf"):
             continue  # already handled
+        
+        current_file += 1
+        if progress_callback:
+            progress_callback(current_file, total_files, file.name, file.size)
+        
         try:
             _reset_file_pointer(file)
             if name.endswith(".csv"):
@@ -106,7 +202,14 @@ def load_all_files(uploaded_files) -> Optional[pd.DataFrame]:
                             with z.open(fn) as f:
                                 frames.append(pd.read_csv(f))
         except Exception as e:
-            st.error(f"Error loading {file.name}: {e}")
+            error_msg = str(e)
+            # Only show error for files that couldn't be processed at all
+            # (skip warnings for files that were already processed by FAERS loader)
+            if id(file) not in processed_files:
+                # Truncate long error messages
+                if len(error_msg) > 200:
+                    error_msg = error_msg[:200] + "..."
+                st.error(f"❌ Error loading {file.name}: {error_msg}")
 
     if not frames:
         return None

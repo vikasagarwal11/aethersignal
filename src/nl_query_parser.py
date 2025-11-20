@@ -6,7 +6,7 @@ Converts natural language queries to filter dictionaries.
 import re
 from typing import Dict, List, Optional, Tuple, Union
 from datetime import datetime
-from utils import parse_date, extract_age, normalize_text
+from src.utils import parse_date, extract_age, normalize_text
 
 
 def detect_negations(query: str) -> List[str]:

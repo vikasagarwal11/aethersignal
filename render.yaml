@@ -1,0 +1,17 @@
+# Render deployment configuration for Social AE API
+services:
+  - type: web
+    name: social-ae-api
+    env: python
+    buildCommand: pip install -r api/requirements.txt
+    startCommand: cd api && uvicorn social_api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SUPABASE_URL
+        value: https://scrksfxnkxmvvdzwmqnc.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false  # Set in Render dashboard
+      - key: API_SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 8000
+
