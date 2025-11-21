@@ -6,12 +6,30 @@ All CSS styling for consistent theme across the platform
 AETHERSIGNAL_THEME_CSS = """
 <style>
 /* ============================================
+   HEADER & SIDEBAR TOGGLE (Must be first)
+   ============================================ */
+/* Hide Streamlit's default header completely */
+header[data-testid="stHeader"] {
+    display: none !important;
+}
+
+/* Force sidebar toggle button to be visible on ALL pages */
+button[kind="header"] {
+    display: block !important;
+    visibility: visible !important;
+    z-index: 1000000 !important;
+    background: #1e293b !important;
+    color: white !important;
+}
+
+/* ============================================
    GLOBAL APP STYLING
    ============================================ */
 .stApp {
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%) !important;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     color: #0f172a;
+    padding-top: 80px !important; /* Universal padding for fixed nav bar */
 }
 
 /* Main content container */
@@ -19,6 +37,98 @@ AETHERSIGNAL_THEME_CSS = """
     padding-top: 1.25rem !important;
     padding-bottom: 2rem !important;
     max-width: 1180px !important;
+}
+
+/* Ensure nav bar is above everything */
+.aether-top-nav {
+    position: fixed !important;
+    z-index: 999999 !important;
+}
+
+/* Force sidebar to start below nav bar */
+[data-testid="stSidebar"] {
+    margin-top: 70px !important;
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding-top: 1rem !important;
+}
+
+/* Hide Streamlit Cloud Deploy button */
+#MainMenu {
+    visibility: hidden;
+}
+
+.stDeployButton {
+    display: none !important;
+}
+
+button[title="Deploy this app"],
+button[title="Manage app"] {
+    display: none !important;
+}
+
+/* Hide Streamlit menu button */
+header[data-testid="stHeader"] > div:first-child button {
+    display: none !important;
+}
+
+/* Ensure sidebar toggle button is ALWAYS visible - even when sidebar is collapsed */
+button[data-testid="baseButton-header"],
+button[aria-label*="sidebar"],
+button[aria-label*="Close"],
+button[aria-label*="Open"],
+button[aria-label*="Settings"],
+button[title*="sidebar"],
+button[title*="Sidebar"],
+button[title*="Settings"],
+button[kind="header"] {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed !important;
+    top: 16px !important;
+    left: 16px !important;
+    z-index: 1000001 !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    background: rgba(15,23,42,0.9) !important;
+    color: white !important;
+    border: 1px solid rgba(148,163,184,0.5) !important;
+    border-radius: 999px !important;
+    padding: 0.4rem 0.7rem !important;
+    box-shadow: 0 6px 18px rgba(15,23,42,0.4) !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+}
+
+/* Make sure sidebar toggle is not hidden anywhere */
+[data-testid="stSidebar"] ~ * button[data-testid="baseButton-header"],
+.stApp > div:first-child button[data-testid="baseButton-header"],
+.stApp button[kind="header"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Ensure sidebar itself doesn't disappear - just slides out */
+[data-testid="stSidebar"] {
+    display: block !important;
+    visibility: visible !important;
+}
+
+/* When collapsed, slide sidebar left but keep toggle visible */
+[data-testid="stSidebar"][aria-expanded="false"] {
+    transform: translateX(-100%) !important;
+    transition: transform 300ms ease !important;
+}
+
+/* Sidebar toggle should ALWAYS be visible regardless of sidebar state */
+[data-testid="stSidebar"][aria-expanded="false"] ~ button[kind="header"],
+[data-testid="stSidebar"][aria-expanded="true"] ~ button[kind="header"],
+button[kind="header"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 /* Full-width hero section override */

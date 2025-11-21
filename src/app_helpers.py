@@ -33,6 +33,7 @@ def initialize_session():
         "query_history": [],
         "analytics_enabled": True,
         "saved_queries": [],
+        "loading_in_progress": False,
     }
 
     for key, default in DEFAULT_SESSION_KEYS.items():
@@ -103,10 +104,37 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
                     temp_zip = None
                     try:
                         # Write UploadedFile to temporary file
+                        if progress_callback:
+                            progress_callback(current_file, total_files, f"Preparing {f.name}...", f.size)
+                        
                         temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
                         temp_zip.write(f.getbuffer())
                         temp_zip.close()
-                        df = faers_loader.load_faers_zip(temp_zip.name)
+                        
+                        # Create wrapper callback for FAERS loader
+                        def faers_progress_wrapper(step_name, step_progress, file_num, total_internal_files):
+                            # Map internal progress to overall file progress
+                            # For ZIP files, we show step-level progress
+                            if progress_callback:
+                                # Use a more detailed message format
+                                detailed_msg = f"{f.name}: {step_name}"
+                                # Calculate overall progress: current_file is started, step_progress is internal
+                                overall_progress = ((current_file - 1) / total_files) + (step_progress / 100 / total_files)
+                                # Update callback with step info
+                                progress_callback(
+                                    current_file, 
+                                    total_files, 
+                                    detailed_msg, 
+                                    f.size,
+                                    step_info={
+                                        'step': step_name,
+                                        'step_progress': step_progress,
+                                        'internal_file': file_num,
+                                        'total_internal': total_internal_files
+                                    }
+                                )
+                        
+                        df = faers_loader.load_faers_zip(temp_zip.name, progress_callback=faers_progress_wrapper)
                     except Exception:
                         df = None
                     finally:
@@ -309,4 +337,3 @@ def render_filter_chips(filters: Dict):
 
     if chips:
         st.markdown("".join(chips), unsafe_allow_html=True)
-

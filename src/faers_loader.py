@@ -103,13 +103,14 @@ def _record_warning(message: str) -> None:
     except Exception:
         pass
 
-def load_faers_folder(folder_path: str) -> Optional[pd.DataFrame]:
+def load_faers_folder(folder_path: str, progress_callback=None) -> Optional[pd.DataFrame]:
     """
     Load FAERS data from a folder containing ASCII files.
     Supports nested folder structures (e.g., ASCII/ subfolder).
     
     Args:
         folder_path: Path to folder containing FAERS ASCII files
+        progress_callback: Optional callback function(step_name, progress_percent, file_num, total_files)
         
     Returns:
         Combined DataFrame with all FAERS data joined on CASE/ISR
@@ -138,10 +139,21 @@ def load_faers_folder(folder_path: str) -> Optional[pd.DataFrame]:
         )
         return None
     
+    total_files = len(files_found)
+    files_processed = 0
+    
+    # Report progress: Finding files
+    if progress_callback:
+        progress_callback("Scanning for FAERS files...", 5, 0, total_files)
+    
     demo_df = None
     demo_error = None
     try:
+        # Report progress: Loading DEMO
+        if progress_callback:
+            progress_callback(f"Reading DEMO file ({Path(files_found['DEMO']).name})...", 10, files_processed, total_files)
         demo_df = load_faers_file(files_found['DEMO'], 'DEMO')
+        files_processed += 1
     except Exception as e:
         demo_error = str(e)
     
@@ -165,51 +177,105 @@ def load_faers_folder(folder_path: str) -> Optional[pd.DataFrame]:
         st.error(error_msg)
         return None
     
-    # Determine the key column (ISR or CASE)
-    key_column = 'ISR'
-    if 'ISR' not in demo_df.columns and 'CASE' in demo_df.columns:
-        key_column = 'CASE'
-    elif 'ISR' not in demo_df.columns and 'caseid' in demo_df.columns:
-        key_column = 'caseid'
+    # Determine the key column (primaryid, caseid, ISR, or CASE)
+    # FAERS 2024+ uses primaryid/caseid, older files use ISR/CASE
+    # Prefer caseid over primaryid for joins (caseid is more commonly used)
+    key_column = None
+    for col_name in ['caseid', 'primaryid', 'isr', 'case', 'CASE']:
+        if col_name in demo_df.columns:
+            key_column = col_name
+            break
     
-    if key_column not in demo_df.columns:
+    if key_column is None:
+        # Try case-insensitive match (columns are already lowercased)
+        for col in demo_df.columns:
+            col_lower = col.lower()
+            if col_lower in ['caseid', 'primaryid', 'isr', 'case']:
+                key_column = col
+                break
+    
+    if key_column is None:
         return None
     
     # Start with DEMO
     combined_df = demo_df.copy()
     
     # Join other files
-    for file_type in ['DRUG', 'REAC', 'OUTC', 'THER', 'INDI', 'RPSR']:
+    file_types = ['DRUG', 'REAC', 'OUTC', 'THER', 'INDI', 'RPSR']
+    for idx, file_type in enumerate(file_types):
         if file_type in files_found:
+            # Calculate progress: 10% for DEMO, 70% for other files (10% each), 20% for merging
+            progress_pct = 10 + int((idx + 1) / len(file_types) * 70)
+            
+            # Report progress: Loading this file type
+            file_name = Path(files_found[file_type]).name
+            if progress_callback:
+                progress_callback(f"Reading {file_type} file ({file_name})...", progress_pct, files_processed, total_files)
+            
             df = load_faers_file(files_found[file_type], file_type)
             if df is not None and len(df) > 0 and key_column in df.columns:
                 # For files that can have multiple rows per case, we'll aggregate
                 if file_type == 'DRUG':
                     # Aggregate drug names
+                    # Check if required columns exist
+                    if 'drug' not in df.columns:
+                        # Skip if drug column doesn't exist after standardization
+                        continue
+                    
+                    # Aggregate drug names and count rows
+                    # Don't try to use drug_seq in aggregation - just count rows directly
                     drug_agg = df.groupby(key_column).agg({
-                        'drug': lambda x: '; '.join(str(v) for v in x.dropna().unique()),
-                        'drug_seq': 'count'
+                        'drug': lambda x: '; '.join(str(v) for v in x.dropna().unique())
                     }).reset_index()
+                    
+                    # Add count column (size of each group) - this always works
+                    drug_agg['drug_count'] = df.groupby(key_column).size().values
                     drug_agg.columns = [key_column, 'drug_name', 'drug_count']
+                    
                     combined_df = combined_df.merge(drug_agg, on=key_column, how='left')
+                    files_processed += 1
                 elif file_type == 'REAC':
                     # Aggregate reactions
+                    # REAC file has NO drug_seq column - just count rows directly
+                    if 'pt' not in df.columns:
+                        continue
+                    
+                    # Count rows per case and aggregate reactions
                     reac_agg = df.groupby(key_column).agg({
-                        'pt': lambda x: '; '.join(str(v) for v in x.dropna().unique()),
-                        'drug_seq': 'count'
+                        'pt': lambda x: '; '.join(str(v) for v in x.dropna().unique())
                     }).reset_index()
+                    
+                    # Add count column (size of each group)
+                    reac_agg['reaction_count'] = df.groupby(key_column).size().values
                     reac_agg.columns = [key_column, 'reaction', 'reaction_count']
                     combined_df = combined_df.merge(reac_agg, on=key_column, how='left')
+                    files_processed += 1
                 elif file_type == 'OUTC':
                     # Take first outcome per case
                     outcome_df = df.groupby(key_column).first().reset_index()
                     combined_df = combined_df.merge(outcome_df, on=key_column, how='left', suffixes=('', '_outc'))
+                    files_processed += 1
                 else:
                     # For other files, merge on first occurrence
                     other_df = df.groupby(key_column).first().reset_index()
                     combined_df = combined_df.merge(other_df, on=key_column, how='left', suffixes=('', f'_{file_type.lower()}'))
+                    files_processed += 1
     
-    return _trim_to_essential_columns(combined_df, key_column)
+    # Report progress: Merging files
+    if progress_callback:
+        progress_callback("Merging all FAERS files...", 85, files_processed, total_files)
+    
+    # Report progress: Finalizing
+    if progress_callback:
+        progress_callback("Finalizing dataset...", 95, files_processed, total_files)
+    
+    result = _trim_to_essential_columns(combined_df, key_column)
+    
+    # Report progress: Complete
+    if progress_callback:
+        progress_callback("Processing complete!", 100, files_processed, total_files)
+    
+    return result
 
 
 def load_faers_file(file_path, file_type: str) -> Optional[pd.DataFrame]:
@@ -240,17 +306,26 @@ def load_faers_file(file_path, file_type: str) -> Optional[pd.DataFrame]:
         if df is None or len(df) == 0:
             return None
         
-        # Clean column names
+        # Clean column names (lowercase everything for consistency)
         df.columns = df.columns.str.strip().str.lower()
         _standardize_faers_columns(df, file_type)
         
-        # Standardize key column names
-        if 'isr' in df.columns:
+        # Standardize key column names - preserve primaryid/caseid for newer format
+        # Don't rename if primaryid or caseid exist (newer FAERS format)
+        # Only standardize if we have ISR/CASE (older format)
+        if 'primaryid' in df.columns and 'caseid' in df.columns:
+            # Use caseid as the standard key (primaryid is also available)
+            pass  # Keep both, use caseid for joins
+        elif 'caseid' in df.columns:
+            pass  # Keep caseid as key
+        elif 'primaryid' in df.columns:
+            pass  # Keep primaryid as key
+        elif 'isr' in df.columns:
+            # Older format - standardize to uppercase ISR
             df.rename(columns={'isr': 'ISR'}, inplace=True)
         elif 'case' in df.columns:
+            # Older format - rename to ISR for consistency
             df.rename(columns={'case': 'ISR'}, inplace=True)
-        elif 'caseid' in df.columns:
-            df.rename(columns={'caseid': 'ISR'}, inplace=True)
         
         return df
     except Exception as e:
@@ -427,9 +502,27 @@ def _standardize_faers_columns(df: pd.DataFrame, file_type: str) -> None:
     
     ft = (file_type or "").upper()
     if ft == 'DRUG':
-        ensure_column('drug', ['drugname', 'medicinalproduct', 'prod_ai'])
+        # DRUG files have: primaryid, caseid, drug_seq, drugname, prod_ai, etc.
+        ensure_column('drug', ['drugname', 'medicinalproduct', 'prod_ai', 'drug_name'])
+        # drug_seq should already exist in DRUG files - no need to create it
+        # If it doesn't exist, we'll use key_column for counting
     elif ft == 'REAC':
-        ensure_column('pt', ['preferred_term', 'reaction', 'reaction_pt'])
+        # REAC files have: primaryid, caseid, pt, drug_rec_act (NO drug_seq column!)
+        ensure_column('pt', ['preferred_term', 'reaction', 'reaction_pt', 'pt_name'])
+        # REAC files do NOT have drug_seq - we'll count rows directly
+    elif ft == 'INDI':
+        # INDI files have: primaryid, caseid, indi_drug_seq, indi_pt
+        ensure_column('indi_pt', ['indication', 'indi_pt', 'indication_pt'])
+    elif ft == 'OUTC':
+        # OUTC files have: primaryid, caseid, outc_cod
+        ensure_column('outc_cod', ['outcome', 'outcome_code', 'outc_cod', 'outcome_cod'])
+    elif ft == 'THER':
+        # THER files have: primaryid, caseid, dsg_drug_seq, start_dt, end_dt, dur, dur_cod
+        # dsg_drug_seq is different from drug_seq - that's OK
+        pass
+    elif ft == 'RPSR':
+        # RPSR files have: primaryid, caseid, rpsr_cod
+        ensure_column('rpsr_cod', ['source', 'report_source', 'rpsr_cod', 'rpsr_code'])
 
 
 def _trim_to_essential_columns(df: pd.DataFrame, key_column: str) -> pd.DataFrame:
@@ -449,13 +542,14 @@ def _trim_to_essential_columns(df: pd.DataFrame, key_column: str) -> pd.DataFram
     return df
 
 
-def load_faers_zip(zip_path: str) -> Optional[pd.DataFrame]:
+def load_faers_zip(zip_path: str, progress_callback=None) -> Optional[pd.DataFrame]:
     """
     Load FAERS data from a ZIP file containing ASCII files.
     Supports nested folder structures (e.g., ASCII/ subfolder).
     
     Args:
         zip_path: Path to ZIP file
+        progress_callback: Optional callback function(step_name, progress_percent, file_num, total_files)
         
     Returns:
         Combined DataFrame with all FAERS data joined on CASE/ISR
@@ -465,6 +559,10 @@ def load_faers_zip(zip_path: str) -> Optional[pd.DataFrame]:
     
     temp_dir = None
     try:
+        # Report progress: Checking ZIP
+        if progress_callback:
+            progress_callback("Checking ZIP archive...", 2, 0, 1)
+        
         # Check ZIP contents first
         with zipfile.ZipFile(zip_path, 'r') as z:
             zip_contents = z.namelist()
@@ -481,14 +579,30 @@ def load_faers_zip(zip_path: str) -> Optional[pd.DataFrame]:
                 # No .txt files found - might be wrong format
                 return None
         
+        # Report progress: Extracting ZIP
+        if progress_callback:
+            progress_callback("Extracting ZIP archive...", 5, 0, 1)
+        
         # Extract to temporary directory
         temp_dir = tempfile.mkdtemp()
         
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(temp_dir)
         
+        # Report progress: Processing FAERS files (delegate to load_faers_folder for detailed progress)
+        if progress_callback:
+            # Create a wrapper callback that adjusts progress percentage
+            def wrapper_callback(step_name, progress_pct, file_num, total_files):
+                # Adjust progress: 5% for extraction, 90% for file processing, 5% buffer
+                adjusted_pct = 5 + int(progress_pct * 0.90)
+                progress_callback(step_name, adjusted_pct, file_num, total_files)
+            
+            faers_progress_callback = wrapper_callback
+        else:
+            faers_progress_callback = None
+        
         # load_faers_folder now uses rglob to search recursively
-        result = load_faers_folder(temp_dir)
+        result = load_faers_folder(temp_dir, progress_callback=faers_progress_callback)
         
         if result is None or len(result) == 0:
             txt_files_in_zip = [f for f in zip_contents if f.lower().endswith('.txt')]

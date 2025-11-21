@@ -32,7 +32,11 @@ def render_sidebar():
     )
     st.caption("Use structured filters for precise slicing. Applies to the next results view.")
 
-    if st.session_state.normalized_data is not None:
+    # Check if data is loaded (both data and normalized_data must be set)
+    data_loaded = st.session_state.data is not None and st.session_state.normalized_data is not None
+    loading_in_progress = st.session_state.get("loading_in_progress", False)
+    
+    if data_loaded:
         # Structured filters
         drug_filter = st.text_input("Drug name", key="sidebar_drug")
         reaction_filter = st.text_input("Reaction / event", key="sidebar_reaction")
@@ -162,10 +166,18 @@ def render_sidebar():
             st.session_state.show_results = False
             st.rerun()
     else:
-        st.info("Upload and load data to enable advanced search.")
+        # Show helpful message based on whether data exists
+        if st.session_state.data is None or st.session_state.normalized_data is None:
+            if loading_in_progress:
+                st.info("Data is loading. Advanced search will unlock once processing completes.")
+            else:
+                st.info("Upload and load data to enable advanced search.")
+        else:
+            st.warning("⚠️ Data loaded but filters are temporarily unavailable. Please reload the page.")
 
     st.markdown("---")
     st.markdown("### ⚛️ Quantum ranking")
+    quantum_disabled = (not data_loaded) or loading_in_progress
     quantum_enabled = st.checkbox(
         "Enable quantum-inspired ranking",
         value=st.session_state.get("quantum_enabled", False),
@@ -173,11 +185,20 @@ def render_sidebar():
             "Re-rank drug–event pairs using a heuristic inspired by quantum search. "
             "Deterministic, simulator-only in this demo."
         ),
+        key="quantum_toggle",
+        disabled=quantum_disabled,
     )
+    if quantum_disabled:
+        if loading_in_progress:
+            st.caption("Finish loading your dataset before toggling quantum ranking.")
+        else:
+            st.caption("Upload and load data to enable quantum ranking.")
+    # Update session state immediately
     st.session_state.quantum_enabled = quantum_enabled
     
     st.markdown("---")
     st.markdown("### 🌐 Social AE signals")
+    social_disabled = (not data_loaded) or loading_in_progress
     include_social_ae = st.checkbox(
         "Include Social AE signals",
         value=st.session_state.get("include_social_ae", False),
@@ -185,7 +206,13 @@ def render_sidebar():
             "Merge social media adverse event signals with FAERS data. "
             "Social signals are weighted at 40% (observational, not validated)."
         ),
+        disabled=social_disabled,
     )
+    if social_disabled:
+        if loading_in_progress:
+            st.caption("Please wait for loading to finish before merging Social AE signals.")
+        else:
+            st.caption("Upload and load data to include Social AE signals.")
     st.session_state.include_social_ae = include_social_ae
 
     st.markdown("---")

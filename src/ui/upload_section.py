@@ -310,11 +310,29 @@ def render_upload_section():
     </script>
     """, unsafe_allow_html=True)
 
-    # Show upload status and file info if files are uploaded
-    if uploaded_files:
-        total_size = sum(f.size for f in uploaded_files)
-        size_mb = total_size / (1024 * 1024)
-        total_files = len(uploaded_files)
+    # Show upload status and file info if files are uploaded OR data is already loaded
+    data_loaded = st.session_state.data is not None and st.session_state.normalized_data is not None
+    
+    if uploaded_files or data_loaded:
+        # Use uploaded file info if available, otherwise use session state stored info
+        if uploaded_files:
+            total_size = sum(f.size for f in uploaded_files)
+            size_mb = total_size / (1024 * 1024)
+            total_files = len(uploaded_files)
+        elif data_loaded:
+            # Data is loaded but files are not in session (e.g., after rerun from quantum toggle)
+            # Use stored info from session state
+            total_size = st.session_state.get('uploaded_file_size', 0)
+            size_mb = total_size / (1024 * 1024) if total_size > 0 else 0
+            total_files = st.session_state.get('uploaded_file_count', 1)
+            # If no stored size, estimate from data
+            if total_size == 0 and st.session_state.data is not None:
+                size_mb = len(st.session_state.data) * 0.001  # Rough estimate
+                total_files = 1
+        else:
+            total_size = 0
+            size_mb = 0
+            total_files = 0
         
         # Show upload completion status card
         st.markdown(f"""
@@ -333,29 +351,88 @@ def render_upload_section():
         """, unsafe_allow_html=True)
         
         # Show individual files with progress indicators
-        with st.expander(f"📋 View {total_files} uploaded file(s) (100% uploaded)", expanded=False):
-            for i, f in enumerate(uploaded_files, 1):
-                file_size_mb = f.size / (1024 * 1024)
-                file_percent = (file_size_mb / size_mb * 100) if size_mb > 0 else 0
-                st.markdown(f"""
-                <div style='padding: 0.5rem; background: #f8fafc; border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid #22c55e;'>
-                    <div style='display: flex; justify-content: space-between; align-items: center;'>
-                        <div>
-                            <strong>#{i}. {f.name}</strong>
-                            <div style='font-size: 0.85rem; color: #64748b;'>{file_size_mb:.1f} MB ({file_percent:.1f}% of total)</div>
+        if uploaded_files:
+            with st.expander(f"📋 View {total_files} uploaded file(s) (100% uploaded)", expanded=False):
+                for i, f in enumerate(uploaded_files, 1):
+                    file_size_mb = f.size / (1024 * 1024)
+                    file_percent = (file_size_mb / size_mb * 100) if size_mb > 0 else 0
+                    st.markdown(f"""
+                    <div style='padding: 0.5rem; background: #f8fafc; border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid #22c55e;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <div>
+                                <strong>#{i}. {f.name}</strong>
+                                <div style='font-size: 0.85rem; color: #64748b;'>{file_size_mb:.1f} MB ({file_percent:.1f}% of total)</div>
+                            </div>
+                            <div style='background: #dcfce7; color: #15803d; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600;'>✅ 100%</div>
                         </div>
-                        <div style='background: #dcfce7; color: #15803d; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600;'>✅ 100%</div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
+        elif data_loaded and st.session_state.get('uploaded_file_names'):
+            # Show stored file names if data is loaded but files are not in session
+            with st.expander(f"📋 View {total_files} processed file(s) (100% complete)", expanded=False):
+                for i, file_name in enumerate(st.session_state.get('uploaded_file_names', []), 1):
+                    st.markdown(f"""
+                    <div style='padding: 0.5rem; background: #f8fafc; border-radius: 6px; margin-bottom: 0.5rem; border-left: 3px solid #22c55e;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <div>
+                                <strong>#{i}. {file_name}</strong>
+                                <div style='font-size: 0.85rem; color: #64748b;'>Processed successfully</div>
+                            </div>
+                            <div style='background: #dcfce7; color: #15803d; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600;'>✅ 100%</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-    load_clicked = st.button("🔄 Load & map data", disabled=not uploaded_files)
+    # Show "Load & map data" button only if files are uploaded but not yet loaded
+    # Also check if we've already processed these files (prevents reprocessing on rerun)
+    loading_in_progress = st.session_state.get("loading_in_progress", False)
+    show_load_button = uploaded_files and not data_loaded and not loading_in_progress
+    
+    if show_load_button:
+        load_clicked = st.button("🔄 Load & map data", disabled=not uploaded_files)
+    elif data_loaded:
+        # Data is already loaded - show prominent status instead of button
+        st.markdown("""
+        <div style='padding: 1rem; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 2px solid #22c55e; border-radius: 8px; margin: 0.75rem 0;'>
+            <div style='font-size: 1.1rem; font-weight: 700; color: #15803d; margin-bottom: 0.5rem;'>✅ Data Already Loaded</div>
+            <div style='font-size: 0.95rem; color: #16a34a;'>
+                Your data is ready! Scroll down to <strong>Step 2: Query Your Data</strong> to start exploring.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        load_clicked = False
+    elif loading_in_progress:
+        # Loading is in progress - show status
+        st.info("⏳ Processing your files... Please wait.")
+        load_clicked = False
+    else:
+        load_clicked = False
 
     if load_clicked and uploaded_files:
         # Calculate total size for progress tracking
         total_size_bytes = sum(f.size for f in uploaded_files)
         total_size_mb = total_size_bytes / (1024 * 1024)
         total_files = len(uploaded_files)
+        
+        # Initialize file progress tracking in session state
+        if 'file_progress' not in st.session_state:
+            st.session_state.file_progress = {}
+        
+        # Initialize all files as pending
+        for idx, file in enumerate(uploaded_files):
+            file_key = f"file_{idx}"
+            if file_key not in st.session_state.file_progress:
+                file_size_mb = file.size / (1024 * 1024)
+                st.session_state.file_progress[file_key] = {
+                    'name': file.name,
+                    'size_mb': file_size_mb,
+                    'size_bytes': file.size,
+                    'status': 'pending',  # pending, processing, complete
+                    'progress_pct': 0,
+                    'processed_mb': 0,
+                    'current_step': None,
+                    'internal_files': None
+                }
         
         # Create a VERY prominent progress display card with metrics
         st.markdown(f"""
@@ -373,6 +450,72 @@ def render_upload_section():
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Create file list container for individual file progress (updatable)
+        st.markdown("<h4 style='color: #1e40af; margin-top: 1.5rem; margin-bottom: 1rem;'>📋 File Progress</h4>", unsafe_allow_html=True)
+        file_list_container = st.empty()
+        
+        # Helper function to render file list with progress (defined early so it can be called)
+        def render_file_list():
+            # Create HTML for file list (single line to prevent Streamlit from displaying as text)
+            file_list_html = "<div style='background: white; border-radius: 8px; padding: 1rem; border: 1px solid #e2e8f0; max-height: 500px; overflow-y: auto;'>"
+            
+            for idx, file in enumerate(uploaded_files):
+                file_key = f"file_{idx}"
+                file_info = st.session_state.file_progress.get(file_key, {})
+                
+                file_name = file_info.get('name', file.name)
+                file_size_mb = file_info.get('size_mb', file.size / (1024 * 1024))
+                status = file_info.get('status', 'pending')
+                progress_pct = file_info.get('progress_pct', 0)
+                processed_mb = file_info.get('processed_mb', 0)
+                current_step = file_info.get('current_step', None)
+                internal_files = file_info.get('internal_files', None)
+                
+                # Determine status color and icon
+                if status == 'complete':
+                    status_color = '#16a34a'
+                    status_icon = '✅'
+                elif status == 'processing':
+                    status_color = '#3b82f6'
+                    status_icon = '⚙️'
+                else:
+                    status_color = '#94a3b8'
+                    status_icon = '⏳'
+                
+                # Progress bar color
+                if progress_pct == 100:
+                    progress_color = '#22c55e'
+                elif progress_pct > 0:
+                    progress_color = '#3b82f6'
+                else:
+                    progress_color = '#e2e8f0'
+                
+                # Escape HTML entities in file name to prevent injection
+                file_name_escaped = str(file_name).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+                
+                # Build file card HTML (single line to prevent text display)
+                file_list_html += f"<div style='padding:1rem;margin-bottom:0.75rem;background:#f8fafc;border-radius:6px;border-left:4px solid {status_color};'><div style='display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;'><div style='flex:1;'><div style='font-weight:600;color:#1e293b;font-size:0.95rem;margin-bottom:0.25rem;'>{status_icon} <code style='background:white;padding:2px 6px;border-radius:3px;font-size:0.9rem;'>{file_name_escaped}</code></div><div style='font-size:0.85rem;color:#64748b;'>{file_size_mb:.1f} MB</div></div><div style='text-align:right;margin-left:1rem;'><div style='font-weight:700;font-size:1.1rem;color:{status_color};'>{progress_pct:.0f}%</div><div style='font-size:0.8rem;color:#64748b;'>{processed_mb:.1f} MB / {file_size_mb:.1f} MB</div></div></div><div style='margin-top:0.5rem;'><div style='background:#e2e8f0;height:8px;border-radius:4px;overflow:hidden;'><div style='background:{progress_color};height:100%;width:{progress_pct}%;transition:width 0.3s ease;'></div></div></div>"
+                
+                # Show current step if processing
+                if status == 'processing' and current_step:
+                    # Escape step name for HTML
+                    step_escaped = str(current_step).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+                    file_list_html += f"<div style='margin-top: 0.5rem; font-size: 0.85rem; color: #475569; font-style: italic;'>{step_escaped}</div>"
+                
+                # Show internal files progress if available
+                if internal_files:
+                    internal_current, internal_total = internal_files
+                    file_list_html += f"<div style='margin-top: 0.5rem; font-size: 0.8rem; color: #64748b;'>Internal files: {internal_current}/{internal_total}</div>"
+                
+                file_list_html += "</div>"
+            
+            file_list_html += "</div>"
+            # Use markdown with unsafe_allow_html to render HTML properly
+            file_list_container.markdown(file_list_html, unsafe_allow_html=True)
+        
+        # Render initial file list (all pending)
+        render_file_list()
         
         # Create VERY prominent progress tracking UI
         progress_bar = st.progress(0)
@@ -423,11 +566,105 @@ def render_upload_section():
                 unsafe_allow_html=True
             )
         
-        # Define progress callback with file size tracking
-        def update_progress(current_file_num, total_file_num, file_name, file_size_bytes=None):
+        # Define progress callback with file size tracking and step-level updates
+        def update_progress(current_file_num, total_file_num, file_name, file_size_bytes=None, step_info=None):
+            # Update file progress in session state
+            file_key = f"file_{current_file_num - 1}"
+            if file_key in st.session_state.file_progress:
+                st.session_state.file_progress[file_key]['status'] = 'processing'
+                if step_info:
+                    st.session_state.file_progress[file_key]['current_step'] = step_info.get('step', 'Processing...')
+                    internal_file = step_info.get('internal_file', 0)
+                    total_internal = step_info.get('total_internal', 1)
+                    st.session_state.file_progress[file_key]['internal_files'] = (internal_file, total_internal)
+                    
+                    # Calculate progress based on step
+                    step_progress = step_info.get('step_progress', 0)
+                    if file_size_bytes:
+                        processed_bytes = file_size_bytes * step_progress / 100
+                        processed_mb = processed_bytes / (1024 * 1024)
+                        st.session_state.file_progress[file_key]['processed_mb'] = processed_mb
+                        st.session_state.file_progress[file_key]['progress_pct'] = step_progress
+                elif file_size_bytes:
+                    # File complete
+                    st.session_state.file_progress[file_key]['processed_mb'] = file_size_bytes / (1024 * 1024)
+                    st.session_state.file_progress[file_key]['progress_pct'] = 100
+                    st.session_state.file_progress[file_key]['status'] = 'complete'
+                    st.session_state.file_progress[file_key]['current_step'] = None
+            
+            # Mark previous files as complete
+            for i in range(current_file_num - 1):
+                prev_file_key = f"file_{i}"
+                if prev_file_key in st.session_state.file_progress:
+                    st.session_state.file_progress[prev_file_key]['status'] = 'complete'
+                    st.session_state.file_progress[prev_file_key]['progress_pct'] = 100
+                    st.session_state.file_progress[prev_file_key]['processed_mb'] = st.session_state.file_progress[prev_file_key]['size_mb']
+            
             # Calculate file progress
             file_progress = current_file_num / total_file_num
             
+            # Render file list (update UI)
+            try:
+                render_file_list()
+            except Exception as e:
+                # Silently fail if rendering fails to avoid breaking progress
+                pass
+            
+            # Handle step-level progress for FAERS ZIP processing
+            if step_info and isinstance(step_info, dict):
+                step_name = step_info.get('step', 'Processing...')
+                step_progress = step_info.get('step_progress', 0)
+                internal_file = step_info.get('internal_file', 0)
+                total_internal = step_info.get('total_internal', 1)
+                
+                # Update status with step information
+                status_container.markdown(
+                    f"<div style='font-size: 1.2rem; font-weight: 600; color: #1e40af; margin: 1rem 0; padding: 0.75rem; background: #e0f2fe; border-radius: 8px; border-left: 4px solid #3b82f6;'>"
+                    f"📄 {file_name}<br>"
+                    f"<span style='font-size: 1rem; color: #475569; font-weight: 500;'>{step_name}</span><br>"
+                    f"<span style='font-size: 0.9rem; color: #64748b;'>Internal files: {internal_file}/{total_internal}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+                
+                # Calculate bytes based on step progress
+                if file_size_bytes:
+                    processed_bytes = sum(f.size for f in uploaded_files[:current_file_num-1]) + (file_size_bytes * step_progress / 100)
+                    processed_mb = processed_bytes / (1024 * 1024)
+                    bytes_progress = processed_bytes / total_size_bytes if total_size_bytes > 0 else 0
+                    
+                    # Update progress bar
+                    progress_bar.progress(bytes_progress)
+                    
+                    # Update metrics
+                    bytes_container.markdown(
+                        f"<div style='text-align: center;'>"
+                        f"<div style='font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;'>Bytes Processed</div>"
+                        f"<div style='font-size: 1.8rem; font-weight: 700; color: #2563eb;'>{processed_mb:.1f} MB</div>"
+                        f"<div style='font-size: 0.9rem; color: #94a3b8;'>/ {total_size_mb:.1f} MB</div></div>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    percentage_container.markdown(
+                        f"<div style='text-align: center;'>"
+                        f"<div style='font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;'>Progress</div>"
+                        f"<div style='font-size: 1.8rem; font-weight: 700; color: #16a34a;'>{bytes_progress*100:.1f}%</div>"
+                        f"<div style='font-size: 0.9rem; color: #94a3b8;'>Step: {step_progress:.0f}%</div></div>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    files_container.markdown(
+                        f"<div style='text-align: center;'>"
+                        f"<div style='font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;'>Files</div>"
+                        f"<div style='font-size: 1.8rem; font-weight: 700; color: #7c3aed;'>{current_file_num}</div>"
+                        f"<div style='font-size: 0.9rem; color: #94a3b8;'>/ {total_file_num}</div>"
+                        f"<div style='font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem;'>{internal_file}/{total_internal} internal</div></div>",
+                        unsafe_allow_html=True
+                    )
+                
+                return  # Step-level progress handled above
+            
+            # Regular file-level progress (non-step-based)
             # Update processed bytes if file size provided
             if file_size_bytes:
                 # Calculate cumulative bytes processed so far
@@ -485,39 +722,56 @@ def render_upload_section():
                     unsafe_allow_html=True
                 )
         
+        st.session_state.loading_in_progress = True
         try:
             raw_df = load_all_files(uploaded_files, progress_callback=update_progress)
             
-            # Show completion with prominent styling
+            # Mark all files as complete
+            for file_key in st.session_state.file_progress:
+                st.session_state.file_progress[file_key]['status'] = 'complete'
+                st.session_state.file_progress[file_key]['progress_pct'] = 100
+                st.session_state.file_progress[file_key]['processed_mb'] = st.session_state.file_progress[file_key]['size_mb']
+            
+            # Render final file list
+            render_file_list()
+            
+            # Show completion with prominent styling - explicitly set to 100%
             progress_bar.progress(1.0)
+            
+            # Update all progress displays to show 100% completion
             status_container.markdown(
-                "<div style='font-size: 1.2rem; font-weight: 700; color: #16a34a; margin: 0.5rem 0;'>"
-                "✅ All files processed successfully!</div>",
+                "<div style='font-size: 1.2rem; font-weight: 700; color: #16a34a; margin: 0.5rem 0; padding: 0.75rem; background: #dcfce7; border-radius: 8px; border-left: 4px solid #22c55e;'>"
+                "✅ All files processed successfully! (100% Complete)</div>",
                 unsafe_allow_html=True
             )
             bytes_container.markdown(
-                f"<div style='font-size: 1.2rem; font-weight: 700; color: #2563eb; margin: 0.5rem 0;'>"
-                f"📊 Total: <strong>{total_size_mb:.1f} MB</strong> processed</div>",
+                f"<div style='text-align: center;'>"
+                f"<div style='font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;'>Bytes Processed</div>"
+                f"<div style='font-size: 1.8rem; font-weight: 700; color: #2563eb;'>{total_size_mb:.1f} MB</div>"
+                f"<div style='font-size: 0.9rem; color: #94a3b8;'>/ {total_size_mb:.1f} MB</div></div>",
+                unsafe_allow_html=True
+            )
+            percentage_container.markdown(
+                f"<div style='text-align: center;'>"
+                f"<div style='font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;'>Progress</div>"
+                f"<div style='font-size: 1.8rem; font-weight: 700; color: #16a34a;'>100.0%</div>"
+                f"<div style='font-size: 0.9rem; color: #94a3b8;'>Complete</div></div>",
                 unsafe_allow_html=True
             )
             files_container.markdown(
-                f"<div style='font-size: 1rem; color: #475569; margin: 0.5rem 0;'>"
-                f"📁 All <strong>{total_files}</strong> files loaded</div>",
+                f"<div style='text-align: center;'>"
+                f"<div style='font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;'>Files</div>"
+                f"<div style='font-size: 1.8rem; font-weight: 700; color: #7c3aed;'>{total_files}</div>"
+                f"<div style='font-size: 0.9rem; color: #94a3b8;'>/ {total_files} (100%)</div></div>",
                 unsafe_allow_html=True
             )
-        except Exception as e:
-            # Show error with progress
-            progress_bar.progress(1.0)
-            status_container.markdown(f"**❌ Error during processing**")
-            bytes_container.markdown(f"**Error: {str(e)[:100]}...**")
-            files_container.empty()
-            st.error(f"❌ Error during file processing: {str(e)}")
-            raw_df = None
+            
+            # Process loaded data if successful
             if raw_df is None or raw_df.empty:
                 st.error("❌ Could not read any rows from the provided files. Please verify formats.")
                 
                 # Check if XML was detected
-                xml_detected = any("xml" in f.name.lower() for f in uploaded_files)
+                xml_detected = any("xml" in f.name.lower() for f in uploaded_files) if uploaded_files else False
                 
                 # Add helpful suggestions
                 st.markdown("**💡 What to try:**")
@@ -537,8 +791,9 @@ def render_upload_section():
                 """)
                 
                 if st.session_state.get("analytics_enabled"):
-                    analytics.log_event("upload_failed", {"file_count": len(uploaded_files)})
+                    analytics.log_event("upload_failed", {"file_count": len(uploaded_files) if uploaded_files else 0})
             else:
+                # Data loaded successfully - store and normalize
                 st.session_state.data = raw_df
                 if st.session_state.get("analytics_enabled"):
                     analytics.log_event(
@@ -568,7 +823,39 @@ def render_upload_section():
                         "Some analysis features may be limited."
                     )
                 st.session_state.normalized_data = normalized
+                # Store file info in session state for later display (survives reruns)
+                if uploaded_files:
+                    st.session_state.uploaded_file_size = sum(f.size for f in uploaded_files)
+                    st.session_state.uploaded_file_count = len(uploaded_files)
+                    st.session_state.uploaded_file_names = [f.name for f in uploaded_files]
+                st.session_state.data_loaded_successfully = True
+                # Mark that loading completed successfully - prevents reprocessing on rerun
+                st.session_state.data_loaded_at = st.session_state.get("data_loaded_at", None) or st.session_state.get("_last_loaded", None)
+                if not st.session_state.data_loaded_at:
+                    import time
+                    st.session_state.data_loaded_at = time.time()
                 st.success(f"✅ Loaded {len(raw_df):,} rows")
+                
+                # Verify data is set (should trigger Step 2 after rerun)
+                if st.session_state.data is not None and st.session_state.normalized_data is not None:
+                    # Show prominent "Step 2 Ready" banner
+                    st.markdown("""
+                    <div style='margin-top: 2rem; padding: 1.5rem; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 3px solid #22c55e; border-radius: 12px; box-shadow: 0 4px 12px rgba(34,197,94,0.3);'>
+                        <div style='display: flex; align-items: center; gap: 1rem;'>
+                            <div style='font-size: 3rem;'>✅</div>
+                            <div style='flex: 1;'>
+                                <h3 style='color: #15803d; margin: 0 0 0.5rem 0; font-size: 1.5rem; font-weight: 700;'>
+                                    Step 1 Complete! Ready for Step 2
+                                </h3>
+                                <p style='color: #16a34a; margin: 0; font-size: 1.1rem; font-weight: 500;'>
+                                    Scroll down to <strong>Step 2: Query Your Data</strong> to search your data using natural language, drug watchlist, or advanced filters.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning("⚠️ Data loaded but normalization failed. Step 2 may not appear.")
 
                 # Dataset snapshot KPIs
                 try:
@@ -641,8 +928,23 @@ def render_upload_section():
                             use_container_width=True,
                             hide_index=True,
                         )
+                
+                # Loading completed successfully - prepare for rerun
                 st.session_state.show_results = False
+                st.session_state.loading_in_progress = False
                 st.rerun()
+        except Exception as e:
+            # Loading failed - ensure flag is cleared and show error
+            st.session_state.loading_in_progress = False
+            progress_bar.progress(1.0)
+            status_container.markdown(f"**❌ Error during processing**")
+            bytes_container.markdown(f"**Error: {str(e)[:100]}...**")
+            files_container.empty()
+            st.error(f"❌ Error during file processing: {str(e)}")
+            # Don't raise - let the UI show the error message
+        finally:
+            # Always clear loading flag, even on error
+            st.session_state.loading_in_progress = False
 
     elif not uploaded_files:
         st.info("Upload at least one file to get started.")
