@@ -54,6 +54,23 @@ header.render_banner()
 # -------------------------------------------------------------------
 # STEP 1 – UPLOAD & SCHEMA
 # -------------------------------------------------------------------
+# Add styled header for Step 1 (matching Step 2 style)
+st.markdown("""
+<div style='margin: 3rem 0 2rem 0; padding: 1rem; background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%); border-radius: 12px; border-left: 5px solid #3b82f6;'>
+    <div style='display: flex; align-items: center; gap: 1rem;'>
+        <div style='font-size: 2.5rem;'>📤</div>
+        <div>
+            <div style='color: #1e40af; margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.4;'>
+                Step 1: Upload Safety Dataset
+            </div>
+                <p style='color: #475569; margin: 0.5rem 0 0 0; font-size: 1rem;'>
+                    Upload any safety data format (FAERS, Argus, Veeva, CSV, Excel, PDF, etc.) — no standard format required. We auto-detect and adapt to your structure.
+                </p>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 upload_section.render_upload_section()
 
 
@@ -99,9 +116,9 @@ if data_loaded:
         <div style='display: flex; align-items: center; gap: 1rem;'>
             <div style='font-size: 2.5rem;'>➡️</div>
             <div>
-                <h3 style='color: #1e40af; margin: 0; font-size: 1.3rem; font-weight: 700;'>
+                <div style='color: #1e40af; margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.4;'>
                     Step 2: Query Your Data
-                </h3>
+                </div>
                 <p style='color: #475569; margin: 0.5rem 0 0 0; font-size: 1rem;'>
                     Use natural language queries, drug watchlist, or advanced filters to explore your safety data.
                 </p>

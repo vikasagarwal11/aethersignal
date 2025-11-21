@@ -59,7 +59,14 @@ def discover_subgroups(
             age_subset = filtered_df[age_mask]
             
             if len(age_subset) >= min_cases:
-                prr_ror = calculate_prr_ror(df, {'drug': drug, 'reaction': reaction, 'age_min': age_min, 'age_max': age_max})
+                # Filter the full dataframe by age range for PRR/ROR calculation
+                full_age_mask = df['age'].apply(
+                    lambda x: age_min <= extract_age(x) <= age_max if extract_age(x) is not None else False
+                ) if 'age' in df.columns else pd.Series([True] * len(df))
+                age_filtered_df = df[full_age_mask]
+                
+                # Calculate PRR/ROR for drug-reaction in this age subgroup
+                prr_ror = calculate_prr_ror(drug, reaction, age_filtered_df)
                 if prr_ror and prr_ror.get('prr', 0) > 1.0:
                     results['age'].append({
                         'subgroup': label,
@@ -76,7 +83,12 @@ def discover_subgroups(
             sex_subset = filtered_df[sex_mask]
             
             if len(sex_subset) >= min_cases:
-                prr_ror = calculate_prr_ror(df, {'drug': drug, 'reaction': reaction, 'sex': sex})
+                # Filter the full dataframe by sex for PRR/ROR calculation
+                full_sex_mask = df['sex'].astype(str).str.upper().str.contains(sex, na=False) if 'sex' in df.columns else pd.Series([True] * len(df))
+                sex_filtered_df = df[full_sex_mask]
+                
+                # Calculate PRR/ROR for drug-reaction in this sex subgroup
+                prr_ror = calculate_prr_ror(drug, reaction, sex_filtered_df)
                 if prr_ror and prr_ror.get('prr', 0) > 1.0:
                     results['sex'].append({
                         'subgroup': 'Male' if sex == 'M' else 'Female',
@@ -90,7 +102,12 @@ def discover_subgroups(
         country_counts = filtered_df['country'].value_counts()
         for country, count in country_counts.items():
             if count >= min_cases and pd.notna(country):
-                prr_ror = calculate_prr_ror(df, {'drug': drug, 'reaction': reaction, 'country': str(country)})
+                # Filter the full dataframe by country for PRR/ROR calculation
+                full_country_mask = (df['country'].astype(str) == str(country)) if 'country' in df.columns else pd.Series([True] * len(df))
+                country_filtered_df = df[full_country_mask]
+                
+                # Calculate PRR/ROR for drug-reaction in this country subgroup
+                prr_ror = calculate_prr_ror(drug, reaction, country_filtered_df)
                 if prr_ror and prr_ror.get('prr', 0) > 1.0:
                     results['country'].append({
                         'subgroup': str(country),

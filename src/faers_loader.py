@@ -512,14 +512,30 @@ def _standardize_faers_columns(df: pd.DataFrame, file_type: str) -> None:
         # REAC files do NOT have drug_seq - we'll count rows directly
     elif ft == 'INDI':
         # INDI files have: primaryid, caseid, indi_drug_seq, indi_pt
+        # NOTE: indi_drug_seq is DIFFERENT from drug_seq (used in DRUG file)
+        # We join on primaryid/caseid, NOT on drug_seq
         ensure_column('indi_pt', ['indication', 'indi_pt', 'indication_pt'])
+        # Preserve indi_drug_seq if it exists (for reference, not for joining)
+        if 'indi_drug_seq' not in df.columns:
+            # Try alternative names
+            for alt in ['indi_drug_seq', 'indication_drug_seq', 'drug_seq']:
+                if alt in df.columns:
+                    df.rename(columns={alt: 'indi_drug_seq'}, inplace=True)
+                    break
     elif ft == 'OUTC':
         # OUTC files have: primaryid, caseid, outc_cod
         ensure_column('outc_cod', ['outcome', 'outcome_code', 'outc_cod', 'outcome_cod'])
     elif ft == 'THER':
         # THER files have: primaryid, caseid, dsg_drug_seq, start_dt, end_dt, dur, dur_cod
-        # dsg_drug_seq is different from drug_seq - that's OK
-        pass
+        # NOTE: dsg_drug_seq is DIFFERENT from drug_seq (used in DRUG file)
+        # We join on primaryid/caseid, NOT on drug_seq
+        # Preserve dsg_drug_seq if it exists (for reference, not for joining)
+        if 'dsg_drug_seq' not in df.columns:
+            # Try alternative names
+            for alt in ['dsg_drug_seq', 'therapy_drug_seq', 'drug_seq']:
+                if alt in df.columns:
+                    df.rename(columns={alt: 'dsg_drug_seq'}, inplace=True)
+                    break
     elif ft == 'RPSR':
         # RPSR files have: primaryid, caseid, rpsr_cod
         ensure_column('rpsr_cod', ['source', 'report_source', 'rpsr_cod', 'rpsr_code'])

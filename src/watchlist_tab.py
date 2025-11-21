@@ -21,13 +21,28 @@ def show_watchlist_tab():
         "This feature scans all cases for each drug and ranks potential safety signals."
     )
 
-    default_drugs = "Wegovy\nOzempic\nMounjaro\nDupixent\nEylea\nLibtayo"
+    # Get default drugs from uploaded dataset (data-driven, no hardcoded values)
+    default_drugs = ""
+    if st.session_state.get("normalized_data") is not None:
+        normalized_df = st.session_state.normalized_data
+        if "drug_name" in normalized_df.columns and len(normalized_df) > 0:
+            # Get top 6 most frequent drugs from uploaded data
+            # Split by semicolon if drugs are stored as "Drug1; Drug2"
+            drug_series = normalized_df["drug_name"].str.split("; ").explode()
+            top_drugs = drug_series.value_counts().head(6).index.tolist()
+            default_drugs = "\n".join(top_drugs)
+    
+    # Initialize session state with defaults if not already set
+    if "watchlist_input" not in st.session_state or not st.session_state.watchlist_input:
+        st.session_state.watchlist_input = default_drugs
+    
     watchlist = st.text_area(
         "Your drugs (one per line)",
-        value=default_drugs,
+        value=st.session_state.watchlist_input if st.session_state.watchlist_input else default_drugs,
         height=180,
         key="watchlist_input",
-        help="Enter drug names, one per line. Case-insensitive matching will be used.",
+        help="Enter drug names, one per line. Case-insensitive matching will be used. "
+             "Defaults shown are the most frequent drugs from your uploaded dataset.",
     )
 
     col1, col2 = st.columns([1, 4])

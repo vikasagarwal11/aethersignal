@@ -13,6 +13,27 @@ header[data-testid="stHeader"] {
     display: none !important;
 }
 
+/* Hide Streamlit anchor links next to headers */
+a[href^="#"],
+a[href^="#"]:hover,
+a[href^="#"]:visited,
+h1 a,
+h2 a,
+h3 a,
+h4 a,
+h5 a,
+h6 a,
+.stAnchorLink,
+[data-testid="stAnchorLink"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
 /* Force sidebar toggle button to be visible on ALL pages */
 button[kind="header"] {
     display: block !important;
@@ -138,6 +159,76 @@ button[kind="header"] {
     margin-left: 0 !important;
     margin-right: 0 !important;
     width: 100% !important;
+}
+
+/* ============================================
+   QUERY INTERFACE HERO (Enterprise Grade)
+   ============================================ */
+.quantum-query-hero {
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%) !important;
+    padding: 2.5rem 2rem !important;
+    border-radius: 20px !important;
+    text-align: center !important;
+    margin: 1rem 0 2rem 0 !important;
+    box-shadow: 0 20px 40px rgba(59,130,246,0.3) !important;
+    border: 1px solid rgba(96,165,250,0.3) !important;
+}
+
+.quantum-query-hero h2 {
+    margin: 0 !important;
+    color: white !important;
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+}
+
+.quantum-query-hero p {
+    color: #e0e7ff !important;
+    font-size: 1.1rem !important;
+    margin: 0.8rem 0 0 0 !important;
+    opacity: 0.9 !important;
+}
+
+/* Starter Question Tiles */
+.stButton>button[kind="secondary"] {
+    background: white !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+    transition: all 0.2s ease !important;
+    white-space: normal !important;
+    height: auto !important;
+    padding: 1rem !important;
+    line-height: 1.4 !important;
+}
+
+.stButton>button[kind="secondary"]:hover {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 8px 25px rgba(59,130,246,0.2) !important;
+    transform: translateY(-2px) !important;
+}
+
+.stButton>button[kind="secondary"]:active {
+    transform: translateY(0) !important;
+}
+
+/* Smart Snippet Chips */
+.stButton>button[type="primary"] {
+    transition: all 0.2s ease !important;
+}
+
+.stButton>button[type="primary"]:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(59,130,246,0.3) !important;
+}
+
+/* Query History Cards */
+div[data-testid="stMarkdownContainer"] div[style*="border-left: 3px solid"] {
+    transition: all 0.2s ease !important;
+}
+
+div[data-testid="stMarkdownContainer"] div[style*="border-left: 3px solid"]:hover {
+    background: #f1f5f9 !important;
+    transform: translateX(2px) !important;
 }
 
 /* ============================================

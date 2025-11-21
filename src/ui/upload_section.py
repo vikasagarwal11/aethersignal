@@ -11,6 +11,7 @@ from src import faers_loader
 from src import pv_schema
 from src import signal_stats
 from src.app_helpers import cached_detect_and_normalize, load_all_files
+from src.ui.schema_mapper import render_schema_mapper
 
 
 def render_upload_section():
@@ -23,20 +24,26 @@ def render_upload_section():
             <div class="session-chip">⚛️ Quantum-inspired ranking (demo)</div>
         </div>
         <div class='block-card' style="margin-top: 0 !important;">
-            <h3>📤 1️⃣ Upload safety dataset</h3>
         """,
         unsafe_allow_html=True,
     )
 
     uploaded_files = st.file_uploader(
-        "Drop FAERS ASCII, Argus/Veeva exports, CSV, Excel, text, ZIP or PDF",
+        "Drop any safety data format: FAERS, Argus, Veeva, CSV, Excel, text, ZIP or PDF",
         type=["csv", "xlsx", "xls", "txt", "zip", "pdf"],
         accept_multiple_files=True,
         help=(
-            "You can upload multiple files. FAERS ASCII (DEMO/DRUG/REAC/OUTC…), "
-            "Argus/Veeva exports, or ad-hoc CSV/Excel are supported. "
-            "⚠️ Note: XML format is NOT supported - use FAERS ASCII (.txt) files instead. "
-            "Large files (>200MB) are supported."
+            "**Flexible format support for multi-vendor data:**\n\n"
+            "✅ **Accepted formats:**\n"
+            "- FAERS ASCII files (DEMO/DRUG/REAC/OUTC/THER/INDI/RPSR)\n"
+            "- Argus/Veeva exports (CSV/Excel)\n"
+            "- Custom CSV/Excel files (any column names)\n"
+            "- PDF files with tables\n"
+            "- ZIP archives containing multiple files\n\n"
+            "**Column mapping:** Auto-detected, with manual override available if needed.\n"
+            "No standard format required - we adapt to your data structure.\n\n"
+            "⚠️ XML format is NOT supported - use ASCII (.txt) files instead.\n"
+            "📦 Large files (>200MB) are supported."
         ),
     )
     
@@ -811,17 +818,63 @@ def render_upload_section():
 
                 essential = ["drug_name", "reaction", "case_id"]
                 found = [f for f in essential if f in mapping]
+                
+                # Check if schema mapping needs manual correction
+                show_schema_mapper = False
+                
                 if len(found) == 0:
-                    st.error(
-                        "Critical: could not detect any essential PV fields "
-                        "(drug_name, reaction, case_id). Check column names or input format."
+                    st.warning(
+                        "⚠️ **Auto-detection found no essential fields.**\n\n"
+                        "**Detected columns:** " + (", ".join(raw_df.columns[:10]) if len(raw_df.columns) > 0 else "None") + 
+                        ("..." if len(raw_df.columns) > 10 else "") + "\n\n"
+                        "**Expected fields (at least 2 required):**\n"
+                        "- Case/Report ID (e.g., case_id, ISR, primaryid)\n"
+                        "- Drug Name (e.g., drug_name, medication, product)\n"
+                        "- Adverse Reaction (e.g., reaction, adverse_event, PT)\n\n"
+                        "Please use the schema mapper below to manually map your columns."
                     )
+                    show_schema_mapper = True
                 elif len(found) < 2:
                     st.warning(
-                        "Only detected "
-                        f"{len(found)} essential field(s): {', '.join(found)}. "
+                        f"⚠️ **Only {len(found)} essential field(s) auto-detected:** {', '.join(found)}\n\n"
+                        "**Missing:** " + ", ".join([f for f in essential if f not in found]) + "\n\n"
+                        "**Available columns in your file:**\n" + 
+                        ", ".join(raw_df.columns[:15].tolist()) + 
+                        ("..." if len(raw_df.columns) > 15 else "") + "\n\n"
+                        "You can manually map columns below or continue with limited features."
+                    )
+                    show_schema_mapper = True
+                
+                # Show schema mapper if needed
+                if show_schema_mapper:
+                    st.markdown("---")
+                    manual_mapping = render_schema_mapper(raw_df, mapping)
+                    
+                    if manual_mapping is not None:
+                        # Use manual mapping
+                        mapping = manual_mapping
+                        st.session_state.schema_mapping = mapping
+                        # Re-normalize with manual mapping
+                        normalized = pv_schema.normalize_dataframe(raw_df, mapping)
+                        st.success(f"✅ Schema mapping applied! {len(mapping)} fields mapped.")
+                        # Update found essential fields for validation
+                        found = [f for f in essential if f in mapping]
+                    else:
+                        # User hasn't applied mapping yet
+                        if len(found) == 0:
+                            st.error("❌ Cannot proceed without essential field mapping. Please map at least 2 essential fields above.")
+                            st.markdown("</div>", unsafe_allow_html=True)
+                            return
+                        # If some fields were found, continue with auto-detected
+                        st.info("ℹ️ Using auto-detected mapping. You can refine it using the schema mapper above.")
+                
+                # Final validation
+                if len(found) < 2:
+                    st.warning(
+                        f"⚠️ Only {len(found)} essential field(s) mapped: {', '.join(found)}. "
                         "Some analysis features may be limited."
                     )
+                
                 st.session_state.normalized_data = normalized
                 # Store file info in session state for later display (survives reruns)
                 if uploaded_files:
