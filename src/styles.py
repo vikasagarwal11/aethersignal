@@ -8,9 +8,11 @@ AETHERSIGNAL_THEME_CSS = """
 /* ============================================
    HEADER & SIDEBAR TOGGLE (Must be first)
    ============================================ */
-/* Hide Streamlit's default header completely */
+/* Keep Streamlit's default header visible - do NOT hide it */
 header[data-testid="stHeader"] {
-    display: none !important;
+    display: block !important;
+    visibility: visible !important;
+    z-index: 10000 !important;
 }
 
 /* Hide Streamlit anchor links next to headers */
@@ -75,23 +77,26 @@ button[kind="header"] {
     padding-top: 1rem !important;
 }
 
-/* Hide Streamlit Cloud Deploy button */
+/* Keep Streamlit Cloud Deploy button visible (optional - can hide if desired) */
 #MainMenu {
-    visibility: hidden;
+    visibility: visible !important;
 }
 
 .stDeployButton {
-    display: none !important;
+    display: block !important;
+    visibility: visible !important;
 }
 
 button[title="Deploy this app"],
 button[title="Manage app"] {
-    display: none !important;
+    display: block !important;
+    visibility: visible !important;
 }
 
-/* Hide Streamlit menu button */
+/* Keep Streamlit menu button visible */
 header[data-testid="stHeader"] > div:first-child button {
-    display: none !important;
+    display: block !important;
+    visibility: visible !important;
 }
 
 /* Ensure sidebar toggle button is ALWAYS visible - even when sidebar is collapsed */
