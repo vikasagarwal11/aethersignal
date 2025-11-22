@@ -1,8 +1,10 @@
 # Pinned versions known to work on Streamlit Cloud
+# Note: Python 3.12 recommended (see runtime.txt) - scipy has pre-built wheels for 3.12
 streamlit==1.38.0
 pandas==2.2.2
 numpy==1.26.4
-scipy==1.11.4
+# scipy - no version pin to allow pip to find Python 3.13 compatible pre-built wheel
+scipy
 plotly==5.22.0
 openpyxl==3.1.5
 fpdf2==2.8.5
