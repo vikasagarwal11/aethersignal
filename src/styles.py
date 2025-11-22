@@ -52,7 +52,7 @@ button[kind="header"] {
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%) !important;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     color: #0f172a;
-    padding-top: 80px !important; /* Universal padding for fixed nav bar */
+    padding-top: 140px !important; /* Universal padding for Streamlit header (60px) + nav bar (70px) */
 }
 
 /* Main content container */
@@ -62,10 +62,13 @@ button[kind="header"] {
     max-width: 1180px !important;
 }
 
-/* Ensure nav bar is above everything */
+/* Ensure nav bar is below Streamlit header but above content */
 .aether-top-nav {
     position: fixed !important;
-    z-index: 999999 !important;
+    z-index: 10002 !important; /* Above Streamlit header */
+    top: 60px !important; /* Position below Streamlit header */
+    display: flex !important; /* Ensure it's visible */
+    visibility: visible !important;
 }
 
 /* Force sidebar to start below nav bar */

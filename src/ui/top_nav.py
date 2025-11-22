@@ -21,13 +21,13 @@ def render_top_nav() -> None:
     /* Fixed top bar - positioned below Streamlit's native header */
     .aether-top-nav {
         position: fixed !important;
-        top: 0 !important;
+        top: 60px !important; /* Position below Streamlit header (typically 60px tall) */
         left: 0 !important;
         right: 0 !important;
         width: 100% !important;
         height: 70px !important;
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-        z-index: 999 !important;
+        z-index: 10002 !important; /* Above Streamlit header (10000) and sidebar toggle (10001) */
         padding: 0 3rem !important;
         display: flex !important;
         align-items: center !important;
@@ -35,6 +35,8 @@ def render_top_nav() -> None:
         border-bottom: 1px solid #334155 !important;
         box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
         color: white !important;
+        visibility: visible !important;
+        opacity: 1 !important;
     }
 
     /* Ensure Streamlit header is visible and above our nav */
@@ -93,9 +95,9 @@ def render_top_nav() -> None:
         border-bottom: 3px solid #60a5fa !important;
     }
 
-    /* Push main content down so it isn't hidden behind the nav */
+    /* Push main content down so it isn't hidden behind the nav (60px header + 70px nav = 130px) */
     .main .block-container {
-        padding-top: 90px !important;
+        padding-top: 140px !important;
     }
 
     @media (max-width: 768px) {
@@ -192,6 +194,25 @@ def render_top_nav() -> None:
         // Also re-run initNav after Streamlit reruns (in case elements are recreated)
         window.addEventListener("load", function() {
             setTimeout(initNav, 100);
+        });
+        
+        // Streamlit-specific: Re-initialize after reruns
+        if (window.parent && window.parent.postMessage) {
+            window.parent.postMessage({type: 'streamlit:rerun'}, '*');
+        }
+        
+        // Force re-initialization on every Streamlit rerun
+        const observer = new MutationObserver(function(mutations) {
+            const nav = document.querySelector('.aether-top-nav');
+            if (nav && !nav.hasAttribute('data-initialized')) {
+                nav.setAttribute('data-initialized', 'true');
+                setTimeout(initNav, 50);
+            }
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
         });
     })();
     </script>
