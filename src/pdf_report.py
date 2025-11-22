@@ -164,17 +164,59 @@ def build_pdf_report(summary_dict: Dict) -> bytes:
     
     y_pos = 48
     
+    # Executive Summary Section (Enhanced)
+    pdf.set_fill_color(241, 245, 249)
+    pdf.rect(10, y_pos, 190, 25, 'F')
+    pdf.set_draw_color(*slate_gray)
+    pdf.rect(10, y_pos, 190, 25, 'D')
+    
+    pdf.set_text_color(*primary_blue)
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_xy(12, y_pos + 3)
+    pdf.cell(0, 6, 'Executive Summary', 0, 1, 'L')
+    
+    pdf.set_text_color(*dark_slate)
+    pdf.set_font('Arial', '', 9)
+    
+    total_cases = summary_dict.get('total_cases', 0)
+    matching_cases = summary_dict.get('matching_cases', 0)
+    percentage = summary_dict.get('percentage', 0.0)
+    serious_count = summary_dict.get('serious_count', 0)
+    serious_pct = summary_dict.get('serious_percentage', 0.0)
+    
+    # Key metrics in summary box
+    pdf.set_xy(12, y_pos + 10)
+    pdf.cell(90, 4, f'Total Cases Analyzed: {total_cases:,}', 0, 0, 'L')
+    pdf.set_xy(102, y_pos + 10)
+    pdf.cell(90, 4, f'Matching Cases: {matching_cases:,} ({percentage:.1f}%)', 0, 1, 'L')
+    
+    pdf.set_xy(12, y_pos + 15)
+    pdf.cell(90, 4, f'Serious Cases: {serious_count:,} ({serious_pct:.1f}%)', 0, 0, 'L')
+    
+    # Signal detection highlight
+    prr_ror = summary_dict.get('prr_ror')
+    if prr_ror:
+        prr = prr_ror.get('prr', 0)
+        pdf.set_xy(102, y_pos + 15)
+        signal_level = "High" if prr >= 2.0 else "Moderate" if prr >= 1.5 else "Low"
+        pdf.cell(90, 4, f'Signal Level: {signal_level} (PRR: {prr:.2f})', 0, 1, 'L')
+    
+    y_pos += 30
+    
     # Query Section
-    pdf.set_font('Arial', 'B', 12)
+    pdf.set_font('Arial', 'B', 11)
     pdf.set_xy(10, y_pos)
-    pdf.cell(0, 8, 'Query Summary', 0, 1, 'L')
+    pdf.cell(0, 6, 'Query Details', 0, 1, 'L')
     
-    pdf.set_font('Arial', '', 10)
-    pdf.set_xy(10, y_pos + 8)
+    pdf.set_font('Arial', '', 9)
+    pdf.set_xy(10, y_pos + 6)
     query = summary_dict.get('query', 'N/A')
-    pdf.multi_cell(190, 5, f'Query: {query}', 0, 'L')
+    # Truncate long queries
+    if len(query) > 120:
+        query = query[:117] + "..."
+    pdf.multi_cell(190, 4, f'Query: {query}', 0, 'L')
     
-    y_pos += 20
+    y_pos += 15
     
     # Statistics Section
     pdf.set_font('Arial', 'B', 12)

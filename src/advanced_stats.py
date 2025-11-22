@@ -1,6 +1,7 @@
 """
 Advanced Statistical Methods for Pharmacovigilance Signal Detection
-IC (Information Component), BCPNN, Chi-square, Fisher's exact test
+IC (Information Component), BCPNN, Chi-square, Fisher's exact test,
+and simplified EBGM-style shrinkage
 """
 import numpy as np
 from scipy.stats import chi2_contingency, fisher_exact
@@ -71,6 +72,66 @@ def calculate_bcpnn(a: int, b: int, c: int, d: int) -> Dict[str, float]:
         Dict with BCPNN score (same as IC)
     """
     return calculate_ic(a, b, c, d, lambda_param=0.5)
+
+
+def calculate_ebgm(a: int, b: int, c: int, d: int) -> Dict[str, float]:
+    """
+    Calculate a simplified Empirical Bayes Geometric Mean (EBGM) with EB05/EB95.
+
+    This is an approximate, self-contained implementation inspired by MGPS:
+    it uses the observed vs expected ratio with a small prior and a log-normal
+    approximation for the posterior distribution. It is intended for
+    exploratory signal assessment – not as a validated implementation for
+    regulatory use.
+
+    Args:
+        a, b, c, d: 2x2 contingency table cells
+
+    Returns:
+        Dict with EBGM, EB05, EB95
+    """
+    n = a + b + c + d
+    if n <= 0:
+        return {"ebgm": 0.0, "eb05": 0.0, "eb95": 0.0}
+
+    # Expected count under independence
+    # E[a] = (row_total * col_total) / n
+    row_total = a + b
+    col_total = a + c
+    expected = safe_divide(row_total * col_total, n)
+
+    # Apply small prior to stabilize estimates
+    obs = a + 0.5
+    exp_adj = expected + 0.5
+
+    if exp_adj <= 0:
+        return {"ebgm": 0.0, "eb05": 0.0, "eb95": 0.0}
+
+    rr = safe_divide(obs, exp_adj)
+    if rr <= 0:
+        return {"ebgm": 0.0, "eb05": 0.0, "eb95": 0.0}
+
+    # Log-normal approximation for the posterior of the relative risk
+    # Variance roughly inversely proportional to observed count
+    var_log_rr = safe_divide(1.0, obs) + safe_divide(1.0, exp_adj)
+    if var_log_rr <= 0:
+        var_log_rr = 0.01
+
+    se_log_rr = float(np.sqrt(var_log_rr))
+    log_rr = float(np.log(rr))
+
+    # EBGM ~ exp(log_rr)
+    ebgm = float(np.exp(log_rr))
+    # 90% interval equivalents (EB05 / EB95); for simplicity use 1.645
+    z = 1.645
+    eb05 = float(np.exp(log_rr - z * se_log_rr))
+    eb95 = float(np.exp(log_rr + z * se_log_rr))
+
+    return {
+        "ebgm": round(ebgm, 3),
+        "eb05": round(eb05, 3),
+        "eb95": round(eb95, 3),
+    }
 
 
 def chi_square_test(a: int, b: int, c: int, d: int) -> Dict[str, float]:

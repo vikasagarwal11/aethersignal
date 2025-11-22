@@ -217,6 +217,44 @@ def render_sidebar():
 
     st.markdown("---")
     
+    # Performance stats panel
+    if st.checkbox("⚡ Performance Stats", key="show_perf_stats"):
+        try:
+            from src.app_helpers import get_performance_stats
+            perf_stats = get_performance_stats()
+            
+            st.markdown("#### Performance Metrics")
+            if perf_stats.get("recent_queries"):
+                st.caption(f"Recent queries: {len(perf_stats['recent_queries'])}")
+                avg_time = perf_stats.get("avg_query_time_ms", 0)
+                st.metric("Avg Query Time", f"{avg_time:.0f} ms")
+            
+            if st.session_state.get("normalized_data") is not None:
+                df = st.session_state.normalized_data
+                st.metric("Dataset Size", f"{len(df):,} rows")
+                st.metric("Columns", len(df.columns))
+            
+            if perf_stats.get("recent_queries"):
+                with st.expander("Recent Query Times", expanded=False):
+                    import pandas as pd
+                    perf_df = pd.DataFrame(perf_stats["recent_queries"])
+                    if not perf_df.empty:
+                        st.dataframe(perf_df, use_container_width=True, hide_index=True)
+        except Exception:
+            st.info("Performance stats not available")
+    
+    st.markdown("---")
+    
+    # Audit trail viewer
+    if st.checkbox("📋 Audit Trail", key="show_audit_trail"):
+        try:
+            from src.audit_trail import render_audit_trail_viewer
+            render_audit_trail_viewer()
+        except Exception as e:
+            st.error(f"Audit trail viewer unavailable: {e}")
+    
+    st.markdown("---")
+    
     # Usage statistics (admin view)
     if st.checkbox("📊 Show usage statistics", key="show_stats"):
         try:

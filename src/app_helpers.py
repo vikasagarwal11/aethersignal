@@ -57,6 +57,7 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
     total_files = len(uploaded_files)
     current_file = 0
     faers_loader.clear_loader_warnings()
+    faers_loader.clear_faers_file_summary()
 
     def _reset_file_pointer(file_obj):
         try:
@@ -337,3 +338,60 @@ def render_filter_chips(filters: Dict):
 
     if chips:
         st.markdown("".join(chips), unsafe_allow_html=True)
+
+
+def get_performance_stats() -> Dict:
+    """
+    Get performance statistics from analytics log.
+    
+    Returns:
+        Dictionary with performance metrics
+    """
+    try:
+        from src import analytics
+        import csv
+        
+        stats = {
+            "recent_queries": [],
+            "avg_query_time_ms": 0,
+            "total_queries": 0,
+        }
+        
+        if not analytics.ANALYTICS_STORAGE_AVAILABLE or analytics.USAGE_LOG_FILE is None:
+            return stats
+        
+        if not analytics.USAGE_LOG_FILE.exists():
+            return stats
+        
+        query_times = []
+        recent_queries = []
+        
+        with open(analytics.USAGE_LOG_FILE, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get("event_type") == "perf_metric":
+                    try:
+                        metadata = json.loads(row.get("metadata", "{}"))
+                        if metadata.get("label") == "apply_filters":
+                            duration_ms = metadata.get("duration_ms", 0)
+                            query_times.append(duration_ms)
+                            recent_queries.append({
+                                "Timestamp": row.get("timestamp", "")[:19],
+                                "Duration (ms)": f"{duration_ms:.0f}",
+                                "Rows": metadata.get("rows", 0),
+                            })
+                    except Exception:
+                        continue
+        
+        if query_times:
+            stats["avg_query_time_ms"] = sum(query_times) / len(query_times)
+            stats["total_queries"] = len(query_times)
+            stats["recent_queries"] = recent_queries[-10:]  # Last 10 queries
+        
+        return stats
+    except Exception:
+        return {
+            "recent_queries": [],
+            "avg_query_time_ms": 0,
+            "total_queries": 0,
+        }

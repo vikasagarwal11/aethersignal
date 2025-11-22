@@ -7,7 +7,7 @@ Also supports PDF files via pdfplumber with regex fallback.
 import pandas as pd
 import zipfile
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import re
 from pathlib import Path
 
@@ -85,6 +85,7 @@ ESSENTIAL_COLUMNS = {
 }
 
 LOAD_WARNINGS: List[str] = []
+FAERS_FILE_SUMMARY: Dict[str, Dict[str, Any]] = {}
 
 
 def get_loader_warnings() -> List[str]:
@@ -93,6 +94,20 @@ def get_loader_warnings() -> List[str]:
 
 def clear_loader_warnings() -> None:
     LOAD_WARNINGS.clear()
+
+
+def get_faers_file_summary() -> Dict[str, Dict[str, Any]]:
+    """
+    Get a copy of the per-file FAERS summary collected during the last load.
+    Returns:
+        Dict keyed by filename with metadata (file_type, rows, approx_skipped_lines, columns)
+    """
+    return FAERS_FILE_SUMMARY.copy()
+
+
+def clear_faers_file_summary() -> None:
+    """Clear accumulated FAERS file summary."""
+    FAERS_FILE_SUMMARY.clear()
 
 
 def _record_warning(message: str) -> None:
@@ -326,6 +341,32 @@ def load_faers_file(file_path, file_type: str) -> Optional[pd.DataFrame]:
         elif 'case' in df.columns:
             # Older format - rename to ISR for consistency
             df.rename(columns={'case': 'ISR'}, inplace=True)
+
+        # Update per-file summary for import diagnostics
+        try:
+            total_lines = 0
+            with open(file_path, 'rb') as fh:
+                for _ in fh:
+                    total_lines += 1
+            approx_skipped = 0
+            if total_lines > 1:
+                approx_skipped = max(0, total_lines - 1 - len(df))
+        except Exception:
+            total_lines = None
+            approx_skipped = None
+
+        try:
+            name = file_path.name if hasattr(file_path, "name") else str(file_path)
+        except Exception:
+            name = str(file_path)
+
+        FAERS_FILE_SUMMARY[name] = {
+            "file_type": file_type,
+            "rows": int(len(df)),
+            "approx_skipped_lines": int(approx_skipped) if approx_skipped is not None else None,
+            "total_lines": int(total_lines) if total_lines is not None else None,
+            "columns": list(df.columns),
+        }
         
         return df
     except Exception as e:
@@ -783,4 +824,3 @@ def detect_and_load_faers(uploaded_files: List) -> Optional[pd.DataFrame]:
                 pass
     
     return None
-

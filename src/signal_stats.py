@@ -367,6 +367,9 @@ def get_data_quality_metrics(df: pd.DataFrame) -> Dict:
             'column_count': 0,
             'missing_percent': {},
             'duplicate_cases': 0,
+            'quality_score': 0,
+            'quality_color': 'red',
+            'quality_label': 'Poor',
         }
     
     key_fields = [
@@ -382,11 +385,56 @@ def get_data_quality_metrics(df: pd.DataFrame) -> Dict:
     if 'case_id' in df.columns:
         duplicate_cases = int(df['case_id'].duplicated().sum())
     
+    # Calculate quality score (0-100)
+    # Weight: completeness (50%), uniqueness (30%), schema coverage (20%)
+    total_rows = len(df)
+    
+    # Completeness score (0-50 points)
+    # Average completeness across key fields
+    completeness_scores = []
+    for field in key_fields:
+        if field in df.columns:
+            completeness = 100 - missing_percent.get(field, 100)
+            completeness_scores.append(completeness)
+    
+    avg_completeness = sum(completeness_scores) / len(completeness_scores) if completeness_scores else 0
+    completeness_points = (avg_completeness / 100) * 50
+    
+    # Uniqueness score (0-30 points)
+    # Penalize duplicates
+    duplicate_rate = (duplicate_cases / total_rows * 100) if total_rows > 0 else 0
+    uniqueness_points = max(0, 30 - (duplicate_rate / 100) * 30)
+    
+    # Schema coverage score (0-20 points)
+    # How many key fields are present
+    fields_present = sum(1 for field in key_fields if field in df.columns)
+    schema_points = (fields_present / len(key_fields)) * 20
+    
+    quality_score = round(completeness_points + uniqueness_points + schema_points, 1)
+    quality_score = max(0, min(100, quality_score))  # Clamp to 0-100
+    
+    # Determine color and label
+    if quality_score >= 80:
+        quality_color = 'green'
+        quality_label = 'Excellent'
+    elif quality_score >= 60:
+        quality_color = 'yellow'
+        quality_label = 'Good'
+    elif quality_score >= 40:
+        quality_color = 'orange'
+        quality_label = 'Fair'
+    else:
+        quality_color = 'red'
+        quality_label = 'Poor'
+    
     return {
         'row_count': len(df),
         'column_count': len(df.columns),
         'missing_percent': missing_percent,
         'duplicate_cases': duplicate_cases,
+        'quality_score': quality_score,
+        'quality_color': quality_color,
+        'quality_label': quality_label,
     }
 
 

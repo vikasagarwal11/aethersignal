@@ -10,12 +10,17 @@ from src import analytics
 from src import faers_loader
 from src import pv_schema
 from src import signal_stats
+from src import mapping_templates
 from src.app_helpers import cached_detect_and_normalize, load_all_files
 from src.ui.schema_mapper import render_schema_mapper
 
 
 def render_upload_section():
     """Render file upload UI and handle loading."""
+    # Initialize in-session schema templates from disk (persistent across runs if filesystem allows)
+    if "schema_templates" not in st.session_state:
+        st.session_state.schema_templates = mapping_templates.load_templates()
+
     st.markdown(
         """
         <div class="session-chip-row" style="margin-bottom: 16px !important;">
@@ -47,9 +52,10 @@ def render_upload_section():
         ),
     )
     
-    # Add upload progress tracking JavaScript
-    # This will inject a progress display right after the file uploader
-    st.markdown("""
+    # Add upload progress tracking JavaScript only when data is not fully loaded
+    if not st.session_state.get("data_loaded_successfully", False):
+        # This injects a client-side progress display near the uploader
+        st.markdown("""
     <script>
     (function() {
         let progressInterval = null;
@@ -812,8 +818,44 @@ def render_upload_section():
                         },
                     )
 
-                # Use cached detection and normalization
-                mapping, normalized = cached_detect_and_normalize(raw_df)
+                # Try to reuse a saved mapping template based on column similarity
+                current_columns = list(raw_df.columns)
+                templates = st.session_state.get("schema_templates", {}) or {}
+                tpl_name, tpl, tpl_score = mapping_templates.find_best_template_for_columns(
+                    current_columns, templates
+                )
+
+                mapping = None
+                normalized = None
+
+                if tpl and tpl_name:
+                    with st.expander("Suggested schema mapping template", expanded=True):
+                        st.caption(
+                            f"Template **{tpl_name}** matches this dataset (column overlap ~{tpl_score:.0%}). "
+                            "You can start from this template or use auto-detected mapping."
+                        )
+                        choice = st.radio(
+                            "Mapping strategy",
+                            ["Use suggested template", "Use auto-detected mapping"],
+                            index=0,
+                        )
+                    if choice == "Use suggested template":
+                        mapping = tpl.get("mapping") or {}
+                        try:
+                            normalized = pv_schema.normalize_dataframe(raw_df, mapping)
+                            st.info(
+                                f"Using saved schema template **{tpl_name}** for column mapping."
+                            )
+                        except Exception:
+                            mapping = None
+                            normalized = None
+                            st.warning(
+                                "Saved template could not be applied cleanly. Falling back to auto-detected mapping."
+                            )
+
+                # If no template used or it failed, fall back to cached detection and normalization
+                if mapping is None or normalized is None:
+                    mapping, normalized = cached_detect_and_normalize(raw_df)
                 st.session_state.schema_mapping = mapping
 
                 essential = ["drug_name", "reaction", "case_id"]
@@ -959,9 +1001,46 @@ def render_upload_section():
                 except Exception:
                     pass
 
+                # Data quality snapshot
                 quality = signal_stats.get_data_quality_metrics(normalized)
                 st.markdown("<div class='block-card'>", unsafe_allow_html=True)
                 st.markdown("#### 🧪 Data quality snapshot")
+                
+                # Quality score with color indicator
+                quality_score = quality.get('quality_score', 0)
+                quality_color = quality.get('quality_color', 'red')
+                quality_label = quality.get('quality_label', 'Poor')
+                
+                # Color mapping for HTML
+                color_map = {
+                    'green': '#22c55e',
+                    'yellow': '#eab308',
+                    'orange': '#f97316',
+                    'red': '#ef4444',
+                }
+                score_color = color_map.get(quality_color, '#64748b')
+                
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom: 1rem; padding: 0.75rem; background: rgba(15,23,42,0.03); border-radius: 8px; border-left: 4px solid {score_color};">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;">Overall Quality Score</div>
+                                <div style="font-size: 1.5rem; font-weight: 600; color: {score_color};">
+                                    {quality_score:.1f}/100
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 0.9rem; font-weight: 500; color: {score_color};">
+                                    {quality_label}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                
                 q1, q2 = st.columns(2)
                 with q1:
                     st.metric("Rows", f"{quality['row_count']:,}")
@@ -974,6 +1053,79 @@ def render_upload_section():
                         st.caption(f"- {field}: {pct:.1f}%")
                 st.markdown("</div>", unsafe_allow_html=True)
 
+                # FAERS / dataset import summary
+                st.markdown("<div class='block-card'>", unsafe_allow_html=True)
+                st.markdown("#### 📊 Dataset summary")
+                s1, s2, s3 = st.columns(3)
+                with s1:
+                    st.metric("Total rows loaded", f"{len(raw_df):,}")
+                    if "case_id" in normalized.columns:
+                        st.metric("Distinct cases", f"{normalized['case_id'].nunique():,}")
+                with s2:
+                    drugs = (
+                        normalized["drug_name"].nunique()
+                        if "drug_name" in normalized.columns
+                        else 0
+                    )
+                    reactions = (
+                        normalized["reaction"].nunique()
+                        if "reaction" in normalized.columns
+                        else 0
+                    )
+                    st.metric("Distinct drugs", f"{drugs:,}")
+                    st.metric("Distinct reactions", f"{reactions:,}")
+                with s3:
+                    # Date range if available
+                    date_cols = ["onset_date", "event_date", "report_date", "receive_date"]
+                    date_col = next(
+                        (c for c in date_cols if c in normalized.columns), None
+                    )
+                    if date_col:
+                        dates = pd.to_datetime(
+                            normalized[date_col], errors="coerce"
+                        ).dropna()
+                        if not dates.empty:
+                            min_date = dates.min().date().isoformat()
+                            max_date = dates.max().date().isoformat()
+                            st.metric("Date range", f"{min_date} → {max_date}")
+                    # Simple FAERS detection heuristic
+                    looks_like_faers = (
+                        "case_id" in normalized.columns
+                        and "drug_name" in normalized.columns
+                        and "reaction" in normalized.columns
+                    )
+                    st.caption(
+                        "Source: FAERS‑style PV table detected"
+                        if looks_like_faers
+                        else "Source: generic PV dataset (schema mapped)"
+                    )
+
+                # Per-file FAERS summary (if available)
+                faers_summary = faers_loader.get_faers_file_summary()
+                if faers_summary:
+                    st.markdown("---")
+                    st.caption("FAERS components detected in this load:")
+                    summary_rows = []
+                    for fname, meta in faers_summary.items():
+                        summary_rows.append(
+                            {
+                                "File": fname,
+                                "Type": meta.get("file_type", ""),
+                                "Rows": meta.get("rows"),
+                                "Approx. skipped lines": meta.get("approx_skipped_lines"),
+                            }
+                        )
+                    if summary_rows:
+                        # Local import to avoid circular dependencies in some environments
+                        import pandas as _pd  # type: ignore
+                        faers_df = _pd.DataFrame(summary_rows)
+                        st.dataframe(
+                            faers_df,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                st.markdown("</div>", unsafe_allow_html=True)
+
                 if mapping:
                     with st.expander("Detected schema mapping", expanded=False):
                         st.dataframe(
@@ -981,6 +1133,17 @@ def render_upload_section():
                             use_container_width=True,
                             hide_index=True,
                         )
+                    # Optional manual override to support arbitrary vendor formats
+                    st.markdown(
+                        "If column detection is not perfect, you can manually remap "
+                        "your columns to the standard PV fields below."
+                    )
+                    manual_mapping = render_schema_mapper(raw_df, mapping)
+                    if manual_mapping:
+                        mapping = manual_mapping
+                        st.session_state.schema_mapping = mapping
+                        normalized = pv_schema.normalize_dataframe(raw_df, mapping)
+                        st.session_state.normalized_data = normalized
                 
                 # Loading completed successfully - prepare for rerun
                 st.session_state.show_results = False
