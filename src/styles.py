@@ -40,7 +40,7 @@ h6 a,
 button[kind="header"] {
     display: block !important;
     visibility: visible !important;
-    z-index: 1000000 !important;
+    /* z-index removed - proper z-index (10003) is set later in more specific rule */
     background: #1e293b !important;
     color: white !important;
 }
@@ -55,25 +55,34 @@ button[kind="header"] {
     padding-top: 140px !important; /* Universal padding for Streamlit header (60px) + nav bar (70px) */
 }
 
-/* Main content container */
-.block-container {
-    padding-top: 1.25rem !important;
+/* Main content container - account for header (60px) + nav (70px) = 130px */
+.main .block-container {
+    padding-top: 150px !important; /* Extra padding for nav bar */
     padding-bottom: 2rem !important;
     max-width: 1180px !important;
 }
+/* Streamlit automatically handles main content shifting when sidebar opens/closes */
 
 /* Ensure nav bar is below Streamlit header but above content */
 .aether-top-nav {
     position: fixed !important;
     z-index: 10002 !important; /* Above Streamlit header */
     top: 60px !important; /* Position below Streamlit header */
+    left: 0 !important;
+    right: 0 !important;
     display: flex !important; /* Ensure it's visible */
     visibility: visible !important;
+    transition: left 300ms ease !important; /* Smooth transition when sidebar opens/closes */
+    /* JavaScript in top_nav.py will adjust left position based on sidebar state */
 }
 
 /* Force sidebar to start below nav bar */
 [data-testid="stSidebar"] {
-    margin-top: 70px !important;
+    /* Sidebar should start at 60px (Header) + 70px (Custom Nav) = 130px */
+    top: 130px !important;
+    /* Adjust height to fill the remaining space below 130px */
+    height: calc(100vh - 130px) !important;
+    /* margin-top removed - using top positioning instead */
 }
 
 [data-testid="stSidebar"] .block-container {
@@ -103,6 +112,7 @@ header[data-testid="stHeader"] > div:first-child button {
 }
 
 /* Ensure sidebar toggle button is ALWAYS visible - even when sidebar is collapsed */
+/* Use Streamlit's native toggle button selector */
 button[data-testid="baseButton-header"],
 button[aria-label*="sidebar"],
 button[aria-label*="Close"],
@@ -111,23 +121,27 @@ button[aria-label*="Settings"],
 button[title*="sidebar"],
 button[title*="Sidebar"],
 button[title*="Settings"],
-button[kind="header"] {
+button[kind="header"],
+header[data-testid="stHeader"] button:first-child {
     display: block !important;
     visibility: visible !important;
     position: fixed !important;
     top: 16px !important;
     left: 16px !important;
-    z-index: 1000001 !important;
+    z-index: 10003 !important; /* Above top nav (10002) */
     opacity: 1 !important;
     pointer-events: auto !important;
-    background: rgba(15,23,42,0.9) !important;
+    background: rgba(15,23,42,0.95) !important;
     color: white !important;
     border: 1px solid rgba(148,163,184,0.5) !important;
-    border-radius: 999px !important;
-    padding: 0.4rem 0.7rem !important;
-    box-shadow: 0 6px 18px rgba(15,23,42,0.4) !important;
-    min-width: 40px !important;
-    min-height: 40px !important;
+    border-radius: 8px !important;
+    padding: 0.5rem !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    cursor: pointer !important;
+    transition: left 300ms ease !important;
+    /* JavaScript in top_nav.py will adjust left position based on sidebar state */
 }
 
 /* Make sure sidebar toggle is not hidden anywhere */
@@ -143,13 +157,52 @@ button[kind="header"] {
 [data-testid="stSidebar"] {
     display: block !important;
     visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
-/* When collapsed, slide sidebar left but keep toggle visible */
+/* When collapsed, keep sidebar visible but slide it off-screen */
 [data-testid="stSidebar"][aria-expanded="false"] {
+    /* Force sidebar to remain visible even when collapsed */
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    /* Slide it off-screen to the left but keep it accessible */
     transform: translateX(-100%) !important;
     transition: transform 300ms ease !important;
+    /* Ensure it's still in the DOM and can be toggled back */
+    position: fixed !important;
+    z-index: 10001 !important;
+    pointer-events: auto !important;
+    /* Override any inline styles Streamlit might add */
+    max-width: none !important;
+    min-width: 21rem !important;
+    width: 21rem !important;
 }
+
+/* Additional override for any Streamlit internal hiding */
+[data-testid="stSidebar"][aria-expanded="false"] * {
+    /* Ensure all sidebar content remains accessible */
+    visibility: visible !important;
+}
+
+/* Override any potential Streamlit hiding mechanisms */
+[data-testid="stSidebar"].css-1d391kg,
+[data-testid="stSidebar"][class*="hidden"],
+[data-testid="stSidebar"][class*="collapsed"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Ensure sidebar container never gets display:none */
+section[data-testid="stSidebar"],
+aside[data-testid="stSidebar"],
+div[data-testid="stSidebar"] {
+    display: block !important;
+    visibility: visible !important;
+}
+/* JavaScript in top_nav.py handles nav bar and toggle positioning based on sidebar state */
 
 /* Sidebar toggle should ALWAYS be visible regardless of sidebar state */
 [data-testid="stSidebar"][aria-expanded="false"] ~ button[kind="header"],
