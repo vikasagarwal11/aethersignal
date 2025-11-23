@@ -6,13 +6,65 @@ All CSS styling for consistent theme across the platform
 AETHERSIGNAL_THEME_CSS = """
 <style>
 /* ============================================
-   HEADER & SIDEBAR TOGGLE (Must be first)
+   CRITICAL: HEADER & NAVIGATION Z-INDEX FIX
    ============================================ */
-/* Keep Streamlit's default header visible - do NOT hide it */
+
+/* Layer 1: Streamlit Header (highest) */
 header[data-testid="stHeader"] {
     display: block !important;
     visibility: visible !important;
-    z-index: 10000 !important;
+    z-index: 999990 !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 60px !important;
+    background: white !important;
+}
+
+/* Layer 2: Sidebar Toggle Button (just below header) */
+button[kind="header"],
+button[data-testid="baseButton-header"],
+button[aria-label*="sidebar"],
+button[aria-label*="navigation"] {
+    display: block !important;
+    visibility: visible !important;
+    z-index: 999991 !important;
+    position: fixed !important;
+    top: 16px !important;
+    left: 16px !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    background: rgba(15,23,42,0.95) !important;
+    color: white !important;
+    border: 1px solid rgba(148,163,184,0.5) !important;
+    border-radius: 8px !important;
+    padding: 0.5rem !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+}
+
+/* Layer 3: Custom Top Nav (below toggle button) */
+.aether-top-nav {
+    position: fixed !important;
+    z-index: 999980 !important;
+    top: 60px !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 70px !important;
+    display: flex !important;
+    visibility: visible !important;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+}
+
+/* Layer 4: Sidebar (below nav) */
+[data-testid="stSidebar"] {
+    z-index: 999970 !important;
+    top: 130px !important;
+    height: calc(100vh - 130px) !important;
+    display: block !important;
+    visibility: visible !important;
 }
 
 /* Hide Streamlit anchor links next to headers */
@@ -36,14 +88,7 @@ h6 a,
     margin: 0 !important;
 }
 
-/* Force sidebar toggle button to be visible on ALL pages */
-button[kind="header"] {
-    display: block !important;
-    visibility: visible !important;
-    /* z-index removed - proper z-index (10003) is set later in more specific rule */
-    background: #1e293b !important;
-    color: white !important;
-}
+/* Legacy toggle button styles - now handled above with proper z-index */
 
 /* ============================================
    GLOBAL APP STYLING
@@ -63,27 +108,7 @@ button[kind="header"] {
 }
 /* Streamlit automatically handles main content shifting when sidebar opens/closes */
 
-/* Ensure nav bar is below Streamlit header but above content */
-.aether-top-nav {
-    position: fixed !important;
-    z-index: 10002 !important; /* Above Streamlit header */
-    top: 60px !important; /* Position below Streamlit header */
-    left: 0 !important;
-    right: 0 !important;
-    display: flex !important; /* Ensure it's visible */
-    visibility: visible !important;
-    transition: left 300ms ease !important; /* Smooth transition when sidebar opens/closes */
-    /* JavaScript in top_nav.py will adjust left position based on sidebar state */
-}
-
-/* Force sidebar to start below nav bar */
-[data-testid="stSidebar"] {
-    /* Sidebar should start at 60px (Header) + 70px (Custom Nav) = 130px */
-    top: 130px !important;
-    /* Adjust height to fill the remaining space below 130px */
-    height: calc(100vh - 130px) !important;
-    /* margin-top removed - using top positioning instead */
-}
+/* Nav bar and sidebar positioning now handled above with proper z-index layering */
 
 [data-testid="stSidebar"] .block-container {
     padding-top: 1rem !important;

@@ -1,7 +1,7 @@
 """
 Top navigation bar component for AetherSignal.
 Provides a fixed navigation bar across all pages.
-Uses native HTML links for Streamlit-compatible navigation.
+FIXED: Navigation positioning and click handling
 """
 
 import streamlit as st
@@ -12,21 +12,27 @@ def render_top_nav() -> None:
     
     st.markdown("""
     <style>
-    /* 1. Keep Streamlit header visible */
+    /* 1. Ensure Streamlit header is visible and positioned correctly */
     header[data-testid="stHeader"] {
         display: block !important;
-        z-index: 10000 !important;
+        visibility: visible !important;
+        z-index: 999990 !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 60px !important;
     }
     
-    /* 2. Fixed top nav — BELOW Streamlit header */
+    /* 2. Fixed top nav BELOW Streamlit header */
     .aether-top-nav {
         position: fixed !important;
-        top: 60px !important;      /* ← Critical: below Streamlit header */
+        top: 60px !important;
         left: 0 !important;
         right: 0 !important;
         height: 70px !important;
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-        z-index: 10002 !important;  /* ← Above header (10000) and toggle (10001) */
+        z-index: 999980 !important;
         padding: 0 3rem !important;
         display: flex !important;
         align-items: center !important;
@@ -37,16 +43,26 @@ def render_top_nav() -> None:
         pointer-events: auto !important;
     }
     
-    /* 3. Never hide sidebar toggle */
-    button[kind="header"] {
+    /* 3. Sidebar toggle button - ALWAYS visible */
+    button[kind="header"],
+    button[data-testid="baseButton-header"] {
         display: block !important;
         visibility: visible !important;
-        z-index: 10001 !important;
+        z-index: 999991 !important;
+        position: fixed !important;
+        top: 16px !important;
+        left: 16px !important;
     }
     
-    /* 4. Push main content down */
+    /* 4. Push main content down to account for both headers */
     .main .block-container {
-        padding-top: 150px !important;  /* 60px header + 70px nav + margin */
+        padding-top: 150px !important;
+    }
+    
+    /* 5. Sidebar positioning below both headers */
+    [data-testid="stSidebar"] {
+        top: 130px !important;
+        height: calc(100vh - 130px) !important;
     }
     
     .nav-left {
@@ -103,149 +119,52 @@ def render_top_nav() -> None:
     </style>
 
     <div class="aether-top-nav">
-        <div class="nav-left" id="nav-logo" style="cursor:pointer">
+        <div class="nav-left" onclick="window.location.href='/'">
             ⚛️ <strong>AetherSignal</strong>
         </div>
         <div class="nav-right">
-            <span class="nav-link" id="nav-home" data-page="home">🏠 Home</span>
-            <span class="nav-link" id="nav-quantum" data-page="quantum">⚛️ Quantum PV</span>
-            <span class="nav-link" id="nav-social" data-page="social">🌐 Social AE</span>
+            <span class="nav-link" onclick="window.location.href='/'">🏠 Home</span>
+            <span class="nav-link" onclick="window.location.href='/1_Quantum_PV_Explorer'">⚛️ Quantum PV</span>
+            <span class="nav-link" onclick="window.location.href='/2_Social_AE_Explorer'">🌐 Social AE</span>
         </div>
     </div>
 
     <script>
     (function() {
-        // Streamlit-compatible navigation function
-        function navigateToPage(page) {
-            const base = window.location.origin;
-            let targetPath = '';
+        // Highlight active page
+        function highlightActivePage() {
+            const path = window.location.pathname;
+            const links = document.querySelectorAll('.nav-link');
             
-            if (page === 'home') {
-                targetPath = base + '/';
-            } else if (page === 'quantum') {
-                targetPath = base + '/1_Quantum_PV_Explorer';
-            } else if (page === 'social') {
-                targetPath = base + '/2_Social_AE_Explorer';
-            }
+            links.forEach(link => {
+                link.classList.remove('active');
+            });
             
-            if (targetPath) {
-                // Direct navigation - Streamlit will handle routing
-                window.location.href = targetPath;
+            if (path === '/' || path === '' || path.includes('app.py')) {
+                const homeLink = Array.from(links).find(l => l.textContent.includes('Home'));
+                if (homeLink) homeLink.classList.add('active');
+            } else if (path.includes('1_Quantum_PV_Explorer')) {
+                const quantumLink = Array.from(links).find(l => l.textContent.includes('Quantum PV'));
+                if (quantumLink) quantumLink.classList.add('active');
+            } else if (path.includes('2_Social_AE_Explorer')) {
+                const socialLink = Array.from(links).find(l => l.textContent.includes('Social AE'));
+                if (socialLink) socialLink.classList.add('active');
             }
         }
         
-        // Set up click handlers with immediate execution
-        function initNavigation() {
-            const logo = document.getElementById('nav-logo');
-            const home = document.getElementById('nav-home');
-            const quantum = document.getElementById('nav-quantum');
-            const social = document.getElementById('nav-social');
-            
-            // Use event delegation on the nav container for reliability
-            const navContainer = document.querySelector('.aether-top-nav');
-            
-            if (navContainer) {
-                navContainer.addEventListener('click', function(e) {
-                    const target = e.target;
-                    const clickedId = target.id || target.closest('[id]')?.id;
-                    
-                    if (clickedId === 'nav-logo' || clickedId === 'nav-home') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        navigateToPage('home');
-                    } else if (clickedId === 'nav-quantum') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        navigateToPage('quantum');
-                    } else if (clickedId === 'nav-social') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        navigateToPage('social');
-                    }
-                }, true); // Use capture phase for better reliability
-            }
-            
-            // Also attach direct handlers as backup
-            if (logo) {
-                logo.onclick = function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    navigateToPage('home');
-                    return false;
-                };
-            }
-            
-            if (home) {
-                home.onclick = function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    navigateToPage('home');
-                    return false;
-                };
-            }
-            
-            if (quantum) {
-                quantum.onclick = function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    navigateToPage('quantum');
-                    return false;
-                };
-            }
-            
-            if (social) {
-                social.onclick = function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    navigateToPage('social');
-                    return false;
-                };
-            }
-            
-            // Active page highlighting
-            setTimeout(function() {
-                const path = window.location.pathname;
-                document.querySelectorAll('.nav-link').forEach(link => {
-                    link.classList.remove('active');
-                    
-                    if ((path === '/' || path === '' || path.endsWith('/app.py')) && link.id === 'nav-home') {
-                        link.classList.add('active');
-                    } else if (path.includes('1_Quantum_PV_Explorer') && link.id === 'nav-quantum') {
-                        link.classList.add('active');
-                    } else if (path.includes('2_Social_AE_Explorer') && link.id === 'nav-social') {
-                        link.classList.add('active');
-                    }
-                });
-            }, 50);
-        }
-        
-        // Initialize immediately
-        initNavigation();
-        
-        // Initialize when DOM is ready
+        // Run on load
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initNavigation);
+            document.addEventListener('DOMContentLoaded', highlightActivePage);
         } else {
-            setTimeout(initNavigation, 50);
+            highlightActivePage();
         }
         
-        // Re-initialize after Streamlit reruns
-        window.addEventListener('load', function() {
-            setTimeout(initNavigation, 100);
-        });
+        // Re-run after Streamlit updates
+        setTimeout(highlightActivePage, 100);
         
-        // Watch for Streamlit reruns
-        const observer = new MutationObserver(function(mutations) {
-            const nav = document.querySelector('.aether-top-nav');
-            if (nav) {
-                setTimeout(initNavigation, 100);
-            }
-        });
-        
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+        // Watch for DOM changes
+        const observer = new MutationObserver(highlightActivePage);
+        observer.observe(document.body, { childList: true, subtree: true });
     })();
     </script>
     """, unsafe_allow_html=True)

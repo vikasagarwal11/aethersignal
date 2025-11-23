@@ -81,8 +81,9 @@ def parse_query_to_filters(query: str) -> Dict:
         filters['drug'] = drugs[0] if len(drugs) == 1 else drugs
     
     # Extract reactions/adverse events
+    # Improved patterns that stop at next "reaction" keyword to prevent capturing duplicates
     reaction_patterns = [
-        r'(?:reaction|adverse event|ae|event|adr|side effect)[\s:]+([a-z0-9\s\-]+?)(?:\.|,|$|\s+and|\s+or)',
+        r'(?:reaction|adverse event|ae|event|adr|side effect)[\s:]+([a-z0-9\s\-]+?)(?:\s+(?:reaction|adverse event|ae|event|adr|side effect|drug|and|or)|\.|,|$)',
         r'(?:with|showing|having|including)[\s]+([a-z0-9\s\-]+?)(?:\s+reaction|\s+event|\s+ae|\.|,|$)',
     ]
     
@@ -91,11 +92,22 @@ def parse_query_to_filters(query: str) -> Dict:
         matches = re.findall(pattern, query_lower, re.IGNORECASE)
         for match in matches:
             reaction = match.strip()
+            # Remove any trailing "reaction" keywords that might have been captured
+            reaction = re.sub(r'\s+(?:reaction|adverse event|ae|event|adr|side effect)\s*$', '', reaction, flags=re.IGNORECASE).strip()
             if len(reaction) > 2 and reaction not in ['the', 'all', 'any', 'for', 'with']:
                 reactions.append(reaction)
     
-    if reactions:
-        filters['reaction'] = reactions[0] if len(reactions) == 1 else reactions
+    # Deduplicate reactions (case-insensitive)
+    seen = set()
+    unique_reactions = []
+    for r in reactions:
+        r_lower = r.lower()
+        if r_lower not in seen:
+            seen.add(r_lower)
+            unique_reactions.append(r)
+    
+    if unique_reactions:
+        filters['reaction'] = unique_reactions[0] if len(unique_reactions) == 1 else unique_reactions
     
     # Extract negated reactions (exclusions)
     negated_reactions = detect_negations(query)

@@ -165,6 +165,36 @@ if data_loaded:
         except Exception:
             st.info("Session diagnostics not available")
         
+        # Quick diagnostic for "No results" issues
+        if st.session_state.last_filters:
+            with st.expander("🔍 Debug: Why no results?", expanded=False):
+                from src.signal_stats import apply_filters
+                
+                # Test individual filters
+                st.write("**Testing filters individually:**")
+                if 'drug' in st.session_state.last_filters:
+                    drug_only = apply_filters(normalized_df, {'drug': st.session_state.last_filters['drug']})
+                    st.write(f"- Drug filter alone: {len(drug_only):,} rows")
+                    if len(drug_only) > 0 and 'drug_name' in drug_only.columns:
+                        st.caption(f"  Sample drugs: {drug_only['drug_name'].head(3).tolist()}")
+                
+                if 'reaction' in st.session_state.last_filters:
+                    reaction_only = apply_filters(normalized_df, {'reaction': st.session_state.last_filters['reaction']})
+                    st.write(f"- Reaction filter alone: {len(reaction_only):,} rows")
+                    if len(reaction_only) > 0 and 'reaction' in reaction_only.columns:
+                        st.caption(f"  Sample reactions: {reaction_only['reaction'].head(3).tolist()}")
+                
+                # Check for exact matches
+                if 'drug' in st.session_state.last_filters and 'drug_name' in normalized_df.columns:
+                    drug_term = str(st.session_state.last_filters['drug']).lower()
+                    exact_matches = normalized_df['drug_name'].astype(str).str.lower().str.contains(drug_term, na=False).sum()
+                    st.write(f"- Exact drug matches (case-insensitive): {exact_matches:,} rows")
+                
+                if 'reaction' in st.session_state.last_filters and 'reaction' in normalized_df.columns:
+                    reaction_term = str(st.session_state.last_filters['reaction']).lower()
+                    exact_matches = normalized_df['reaction'].astype(str).str.lower().str.contains(reaction_term, na=False).sum()
+                    st.write(f"- Exact reaction matches (case-insensitive): {exact_matches:,} rows")
+        
         st.markdown("</div>", unsafe_allow_html=True)
 else:
     # Landing content when no data is loaded

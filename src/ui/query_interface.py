@@ -160,7 +160,7 @@ def render_nl_query_tab(normalized_df):
     """Step 2 – natural‑language query workbench."""
 
     st.markdown("<div class='block-card'>", unsafe_allow_html=True)
-    st.markdown("### 2️⃣ Ask a question")
+    st.markdown("### Ask a question")
     st.caption(
         "Type a question in plain English, or start from a suggested tile or a saved query. "
         "Step 2 always uses the dataset you loaded in Step 1."
@@ -273,13 +273,20 @@ def render_nl_query_tab(normalized_df):
                     use_container_width=True,
                 ):
                     current = st.session_state.get("query_text", "")
-                    new_q = (
-                        f"{current} drug {drug}".strip()
-                        if current
-                        else f"Show cases with drug {drug}"
-                    )
-                    st.session_state.query_text = new_q
-                    st.rerun()
+                    # Check if this drug is already in the query to prevent duplicates
+                    drug_lower = drug.lower()
+                    current_lower = current.lower()
+                    if drug_lower in current_lower and f"drug {drug_lower}" in current_lower:
+                        # Drug already in query, don't add again
+                        st.info(f"ℹ️ '{drug}' is already in your query")
+                    else:
+                        new_q = (
+                            f"{current} drug {drug}".strip()
+                            if current
+                            else f"Show cases with drug {drug}"
+                        )
+                        st.session_state.query_text = new_q
+                        st.rerun()
         if top_reactions:
             st.caption("⚠️ Top reactions")
             for idx, reaction in enumerate(top_reactions[:6]):
@@ -289,13 +296,20 @@ def render_nl_query_tab(normalized_df):
                     use_container_width=True,
                 ):
                     current = st.session_state.get("query_text", "")
-                    new_q = (
-                        f"{current} reaction {reaction}".strip()
-                        if current
-                        else f"Show cases with reaction {reaction}"
-                    )
-                    st.session_state.query_text = new_q
-                    st.rerun()
+                    # Check if this reaction is already in the query to prevent duplicates
+                    reaction_lower = reaction.lower()
+                    current_lower = current.lower()
+                    if reaction_lower in current_lower and f"reaction {reaction_lower}" in current_lower:
+                        # Reaction already in query, don't add again
+                        st.info(f"ℹ️ '{reaction}' is already in your query")
+                    else:
+                        new_q = (
+                            f"{current} reaction {reaction}".strip()
+                            if current
+                            else f"Show cases with reaction {reaction}"
+                        )
+                        st.session_state.query_text = new_q
+                        st.rerun()
 
         # Saved queries
         st.markdown("---")
@@ -463,4 +477,5 @@ def render_query_interface(normalized_df):
 
     with advanced_tab:
         render_advanced_search_tab()
+
 

@@ -403,7 +403,11 @@ def build_pdf_report(summary_dict: Dict) -> bytes:
     pdf.cell(0, 4, 'AetherSignal - Quantum PV Explorer | Exploratory Tool Only | Not for Regulatory Decision-Making', 0, 1, 'C')
     
     # Convert to bytes
-    return pdf.output(dest='S').encode('latin-1')
+    raw = pdf.output(dest='S')
+    # fpdf2 may return either a str or a bytearray depending on version
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    return str(raw).encode('latin-1')
 
 
 def create_summary_dict(
