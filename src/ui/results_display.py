@@ -1815,15 +1815,6 @@ def _render_trends_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame):
         st.dataframe(co_df, use_container_width=True, hide_index=True)
         st.markdown("</div>", unsafe_allow_html=True)
     
-    # Time-to-onset analysis
-    if "onset_date" in filtered_df.columns and "start_date" in filtered_df.columns:
-        _render_time_to_onset_analysis(filtered_df, filters)
-    elif "onset_date" in filtered_df.columns:
-        st.info("💡 Time-to-onset analysis requires both 'onset_date' and 'start_date' columns. Only 'onset_date' is available.")
-    
-    # Case series viewer
-    _render_case_series_section(filtered_df, filters)
-    
     if not summary.get("time_trend") and not top_co_reactions:
         st.info("Time trend and co-reaction data not available for this query.")
 

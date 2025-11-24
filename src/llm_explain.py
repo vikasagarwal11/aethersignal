@@ -116,7 +116,8 @@ def generate_signal_explanation(context: Dict) -> Optional[str]:
         try:
             from openai import OpenAI  # type: ignore
 
-            client = OpenAI(api_key=api_key)
+            # Initialize client with timeout
+            client = OpenAI(api_key=api_key, timeout=30.0)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -128,11 +129,13 @@ def generate_signal_explanation(context: Dict) -> Optional[str]:
             )
             content = response.choices[0].message.content
             return content.strip() if content else None
-        except Exception:
+        except Exception as e:
             # 2) Fallback to legacy ChatCompletion interface
             try:
-                openai.api_key = api_key
-                response = openai.ChatCompletion.create(
+                import openai as openai_legacy
+                openai_legacy.api_key = api_key
+                # Legacy API doesn't support timeout parameter in create()
+                response = openai_legacy.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -144,7 +147,9 @@ def generate_signal_explanation(context: Dict) -> Optional[str]:
                 content = response.choices[0].message["content"]
                 return content.strip() if content else None
             except Exception:
+                # Silently fail - LLM explanation is optional
                 return None
     except Exception:
+        # Silently fail - LLM explanation is optional
         return None
 

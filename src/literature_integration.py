@@ -46,8 +46,16 @@ def search_pubmed(drug: str, reaction: Optional[str] = None, max_results: int = 
             'sort': 'relevance'
         }
         
-        response = requests.get(search_url, params=search_params, timeout=10)
-        if response.status_code != 200:
+        try:
+            response = requests.get(search_url, params=search_params, timeout=10)
+            if response.status_code != 200:
+                # Log error but don't crash
+                return []
+        except requests.exceptions.Timeout:
+            # Timeout - return empty list gracefully
+            return []
+        except requests.exceptions.RequestException as e:
+            # Network error - return empty list gracefully
             return []
         
         data = response.json()
@@ -64,8 +72,16 @@ def search_pubmed(drug: str, reaction: Optional[str] = None, max_results: int = 
             'retmode': 'xml'
         }
         
-        response = requests.get(fetch_url, params=fetch_params, timeout=15)
-        if response.status_code != 200:
+        try:
+            response = requests.get(fetch_url, params=fetch_params, timeout=15)
+            if response.status_code != 200:
+                # Log error but don't crash
+                return []
+        except requests.exceptions.Timeout:
+            # Timeout - return empty list gracefully
+            return []
+        except requests.exceptions.RequestException as e:
+            # Network error - return empty list gracefully
             return []
         
         # Parse XML response
@@ -177,8 +193,16 @@ def search_clinical_trials(drug: str, condition: Optional[str] = None, max_resul
             'format': 'json'
         }
         
-        response = requests.get(api_url, params=params, timeout=10)
-        if response.status_code != 200:
+        try:
+            response = requests.get(api_url, params=params, timeout=10)
+            if response.status_code != 200:
+                # Log error but don't crash
+                return []
+        except requests.exceptions.Timeout:
+            # Timeout - return empty list gracefully
+            return []
+        except requests.exceptions.RequestException as e:
+            # Network error - return empty list gracefully
             return []
         
         data = response.json()

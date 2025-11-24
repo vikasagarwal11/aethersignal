@@ -45,7 +45,9 @@ button[aria-label*="navigation"] {
     min-height: 44px !important;
 }
 
-/* Layer 3: Custom Top Nav (below toggle button) */
+/* Layer 3: Custom Top Nav (below toggle button)
+   NOTE: Main nav styling is defined in src/ui/top_nav.py
+   This section only contains minimal complementary styles */
 .aether-top-nav {
     position: fixed !important;
     z-index: 999980 !important;
