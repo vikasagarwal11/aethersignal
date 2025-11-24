@@ -156,13 +156,16 @@ def render_audit_trail_viewer():
     st.caption("View all user actions and system events. Immutable log for compliance tracking.")
     
     # 21 CFR Part 11 mode toggle
+    # Note: When using key parameter, Streamlit automatically manages session state
+    # The checkbox widget automatically updates st.session_state.audit_cfr_mode
+    # The return value (cfr_mode) is the current state - use it directly
+    # DO NOT manually set: st.session_state.audit_cfr_mode = cfr_mode (causes error!)
     cfr_mode = st.checkbox(
         "21 CFR Part 11 Mode",
         value=st.session_state.get("audit_cfr_mode", False),
         help="Enable stricter compliance mode with read-only logs and enhanced security.",
         key="audit_cfr_mode",
     )
-    st.session_state.audit_cfr_mode = cfr_mode
     
     if cfr_mode:
         st.info("🔒 **21 CFR Part 11 Mode Active** - Audit logs are read-only and immutable.")

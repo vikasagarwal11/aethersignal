@@ -81,21 +81,32 @@ def parse_query_to_filters(query: str) -> Dict:
         filters['drug'] = drugs[0] if len(drugs) == 1 else drugs
     
     # Extract reactions/adverse events
-    # Improved patterns that stop at next "reaction" keyword to prevent capturing duplicates
-    reaction_patterns = [
-        r'(?:reaction|adverse event|ae|event|adr|side effect)[\s:]+([a-z0-9\s\-]+?)(?:\s+(?:reaction|adverse event|ae|event|adr|side effect|drug|and|or)|\.|,|$)',
-        r'(?:with|showing|having|including)[\s]+([a-z0-9\s\-]+?)(?:\s+reaction|\s+event|\s+ae|\.|,|$)',
-    ]
-    
+    # Strategy: Find all "reaction X" patterns, then extract the reaction term
+    # Use lookahead to stop at next keyword, but be smart about "drug" in reaction names
     reactions = []
-    for pattern in reaction_patterns:
-        matches = re.findall(pattern, query_lower, re.IGNORECASE)
-        for match in matches:
-            reaction = match.strip()
-            # Remove any trailing "reaction" keywords that might have been captured
-            reaction = re.sub(r'\s+(?:reaction|adverse event|ae|event|adr|side effect)\s*$', '', reaction, flags=re.IGNORECASE).strip()
-            if len(reaction) > 2 and reaction not in ['the', 'all', 'any', 'for', 'with']:
-                reactions.append(reaction)
+    
+    # Find all positions where "reaction" keyword appears
+    reaction_keyword_pattern = r'\b(?:reaction|adverse event|ae|event|adr|side effect)\b'
+    reaction_positions = []
+    for match in re.finditer(reaction_keyword_pattern, query_lower, re.IGNORECASE):
+        reaction_positions.append(match.end())
+    
+    # Extract reaction terms after each "reaction" keyword
+    for pos in reaction_positions:
+        # Get text after "reaction" keyword
+        remaining_text = query_lower[pos:]
+        # Find where the next keyword starts
+        # Look for "reaction", "drug" (as keyword, not part of reaction name), "and", "or", or end
+        # Pattern: word boundary before "drug" to avoid matching "Drug ineffective"
+        next_keyword_match = re.search(r'\s+(?:reaction|adverse event|ae|event|adr|side effect)\b|\s+\bdrug\b(?!\s+[a-z])|\s+(?:and|or)\b|\.|,|$', remaining_text, re.IGNORECASE)
+        if next_keyword_match:
+            reaction_text = remaining_text[:next_keyword_match.start()].strip()
+            # Clean up the reaction text
+            reaction_text = re.sub(r'^[\s:]+', '', reaction_text)  # Remove leading colons/spaces
+            reaction_text = re.sub(r'\s+$', '', reaction_text)  # Remove trailing spaces
+            # Filter out empty or very short terms
+            if len(reaction_text) > 2 and reaction_text not in ['the', 'all', 'any', 'for', 'with']:
+                reactions.append(reaction_text)
     
     # Deduplicate reactions (case-insensitive)
     seen = set()
@@ -106,8 +117,32 @@ def parse_query_to_filters(query: str) -> Dict:
             seen.add(r_lower)
             unique_reactions.append(r)
     
+    # Detect AND vs OR logic for multiple reactions
+    # Default to OR (matches any), but check for explicit AND
+    reaction_logic = "OR"  # Default
+    if unique_reactions and len(unique_reactions) > 1:
+        # Check if query explicitly uses "and" between reactions
+        # Look for pattern like "reaction X and reaction Y" or "reaction X, reaction Y" (comma often implies AND)
+        reaction_section = query_lower
+        # Find the section with reactions
+        reaction_indices = []
+        for r in unique_reactions:
+            idx = reaction_section.find(r.lower())
+            if idx != -1:
+                reaction_indices.append((idx, r))
+        
+        if len(reaction_indices) >= 2:
+            # Check text between reactions
+            reaction_indices.sort()
+            between_text = reaction_section[reaction_indices[0][0] + len(reaction_indices[0][1]):reaction_indices[1][0]]
+            # If "and" is found between reactions (not "or"), use AND logic
+            if re.search(r'\band\b', between_text, re.IGNORECASE) and not re.search(r'\bor\b', between_text, re.IGNORECASE):
+                reaction_logic = "AND"
+    
     if unique_reactions:
         filters['reaction'] = unique_reactions[0] if len(unique_reactions) == 1 else unique_reactions
+        if len(unique_reactions) > 1:
+            filters['reaction_logic'] = reaction_logic  # Store AND/OR logic
     
     # Extract negated reactions (exclusions)
     negated_reactions = detect_negations(query)

@@ -1094,6 +1094,39 @@ def render_upload_section():
                         and "drug_name" in normalized.columns
                         and "reaction" in normalized.columns
                     )
+                    # Drug name normalization button
+                    if "drug_name" in normalized.columns and len(normalized) > 0:
+                        st.markdown("---")
+                        col1, col2 = st.columns([2, 1])
+                        with col1:
+                            st.markdown("**🔧 Data Quality Tools**")
+                            st.caption("Normalize drug names to improve matching accuracy")
+                        with col2:
+                            if st.button("✨ Normalize Drug Names", key="normalize_drugs_btn", use_container_width=True):
+                                try:
+                                    from src.drug_name_normalization import normalize_drug_column, group_similar_drugs
+                                    
+                                    with st.spinner("Normalizing drug names..."):
+                                        # Normalize drug names
+                                        normalized_normalized = normalize_drug_column(normalized.copy(), drug_column='drug_name')
+                                        
+                                        # Group similar drugs
+                                        normalized_grouped = group_similar_drugs(normalized_normalized, drug_column='drug_name', threshold=0.85)
+                                        
+                                        # Update session state
+                                        st.session_state.normalized_data = normalized_grouped
+                                        st.session_state.data = normalized_grouped
+                                        
+                                        # Show results
+                                        original_unique = normalized['drug_name'].nunique()
+                                        new_unique = normalized_grouped['drug_name_normalized'].nunique() if 'drug_name_normalized' in normalized_grouped.columns else normalized_grouped['drug_name'].nunique()
+                                        
+                                        st.success(f"✅ Drug names normalized! Reduced from {original_unique} to {new_unique} unique drug names.")
+                                        st.info("💡 Similar drug names have been grouped together (e.g., 'TYLENOL' → 'Acetaminophen', 'aspirin HCL' → 'Aspirin')")
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Error normalizing drug names: {str(e)}")
+                    
                     st.caption(
                         "Source: FAERS‑style PV table detected"
                         if looks_like_faers

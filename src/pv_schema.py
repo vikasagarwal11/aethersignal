@@ -32,6 +32,20 @@ STANDARD_FIELDS = {
                     'receive_date', 'receive date', 'rpt_dt', 'rptdt', 'foll_seq'],
     'outcome': ['outcome', 'outc_cod', 'outcome_code', 'outcome code', 
                 'patient_outcome', 'patient outcome', 'outc'],
+    # Additional case processing fields
+    'dechallenge': ['dechal', 'dechallenge', 'dechallenge_code'],
+    'rechallenge': ['rechal', 'rechallenge', 'rechallenge_code'],
+    'dose_amount': ['dose_amt', 'dose_amount', 'dose', 'dose_amnt'],
+    'dose_unit': ['dose_unit', 'dose_units', 'unit', 'dose_unit_cod'],
+    'dose_form': ['dose_form', 'doseform', 'form', 'dosage_form'],
+    'route': ['route', 'route_cod', 'route_code', 'route_of_admin'],
+    'drug_role': ['role_cod', 'role_code', 'drug_role', 'role'],
+    'therapy_start': ['start_dt', 'start_date', 'therapy_start', 'dsg_dt'],
+    'therapy_end': ['end_dt', 'end_date', 'therapy_end'],
+    'therapy_duration': ['dur', 'duration', 'therapy_duration'],
+    'therapy_duration_code': ['dur_cod', 'duration_code', 'dur_code'],
+    'indication': ['indi_pt', 'indication', 'indication_pt', 'indication_preferred_term'],
+    'reporter_type': ['rpsr_cod', 'reporter_type', 'report_source', 'rpsr_code'],
 }
 
 

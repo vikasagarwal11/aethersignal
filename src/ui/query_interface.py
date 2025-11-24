@@ -189,7 +189,8 @@ def render_nl_query_tab(normalized_df):
             ),
             help=(
                 "Tips: Use 'drug X', 'reaction Y', 'age 18-65', 'serious', "
-                "'country US', 'since 2020', 'from 2020-01-01', 'until 2023-12-31'."
+                "'country US', 'since 2020', 'from 2020-01-01', 'until 2023-12-31'. "
+                "Multiple reactions default to OR (matches any). Use 'and' explicitly for AND logic."
             ),
         )
 
@@ -303,11 +304,21 @@ def render_nl_query_tab(normalized_df):
                         # Reaction already in query, don't add again
                         st.info(f"ℹ️ '{reaction}' is already in your query")
                     else:
-                        new_q = (
-                            f"{current} reaction {reaction}".strip()
-                            if current
-                            else f"Show cases with reaction {reaction}"
-                        )
+                        # Check if there's already a reaction in the query
+                        has_reaction = "reaction" in current_lower
+                        if has_reaction:
+                            # Add with OR to make it explicit (default behavior is OR)
+                            new_q = (
+                                f"{current} OR reaction {reaction}".strip()
+                                if current
+                                else f"Show cases with reaction {reaction}"
+                            )
+                        else:
+                            new_q = (
+                                f"{current} reaction {reaction}".strip()
+                                if current
+                                else f"Show cases with reaction {reaction}"
+                            )
                         st.session_state.query_text = new_q
                         st.rerun()
 

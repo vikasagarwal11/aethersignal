@@ -78,6 +78,8 @@ def fuzzy_match(text1: str, text2: str, threshold: float = 0.8) -> bool:
     Simple fuzzy matching using Levenshtein-like similarity.
     For exact matching, use normalized strings.
     
+    For drug names, use drug_name_normalization.fuzzy_match_drugs() instead.
+    
     Args:
         text1: First text
         text2: Second text

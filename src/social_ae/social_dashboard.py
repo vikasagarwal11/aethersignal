@@ -15,6 +15,7 @@ from .social_anonymizer import anonymize_posts
 from .social_ae_storage import store_posts, get_posts, get_statistics, init_database
 from .social_storage import store_social_records, load_recent_social, get_social_statistics
 from .social_ae_scheduler import run_daily_pull, DEFAULT_DRUG_WATCHLIST
+from src.literature_integration import enrich_signal_with_literature
 
 
 def render_social_ae_module():
@@ -223,6 +224,62 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
                 reaction_df["MedDRA PT"] = reaction_df["Reaction"].apply(normalize_to_meddra)
                 with st.expander("🔬 View with MedDRA mappings", expanded=False):
                     st.dataframe(reaction_df, use_container_width=True, hide_index=True)
+                
+                # Literature validation for top reactions
+                if len(reaction_df) > 0:
+                    st.markdown("---")
+                    st.markdown("#### 📚 Validate Against Literature")
+                    st.caption("Check if top reactions are mentioned in published literature or clinical trials")
+                    
+                    top_reactions = reaction_df.head(3)["Reaction"].tolist()
+                    top_drugs = df["drug_match"].value_counts().head(3).index.tolist() if "drug_match" in df.columns else []
+                    
+                    if top_drugs and top_reactions:
+                        selected_drug = st.selectbox(
+                            "Select drug to validate",
+                            options=top_drugs,
+                            key="social_ae_lit_drug",
+                        )
+                        selected_reaction = st.selectbox(
+                            "Select reaction to validate",
+                            options=top_reactions,
+                            key="social_ae_lit_reaction",
+                        )
+                        
+                        if st.button("🔍 Search Literature", key="social_ae_search_lit"):
+                            with st.spinner("Searching PubMed and ClinicalTrials.gov..."):
+                                literature = enrich_signal_with_literature(selected_drug, selected_reaction)
+                                
+                                if literature['total_pubmed'] > 0 or literature['total_trials'] > 0:
+                                    st.success(f"✅ Found {literature['total_pubmed']} PubMed articles and {literature['total_trials']} clinical trials")
+                                    
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.markdown("**📄 PubMed Articles**")
+                                        if literature['pubmed_articles']:
+                                            for article in literature['pubmed_articles']:
+                                                st.markdown(
+                                                    f"**{article.get('title', 'N/A')}**  \n"
+                                                    f"*{article.get('authors', 'N/A')}*  \n"
+                                                    f"{article.get('journal', '')} ({article.get('year', 'N/A')})  \n"
+                                                    f"[View]({article.get('url', '#')})"
+                                                )
+                                                st.markdown("---")
+                                    
+                                    with col2:
+                                        st.markdown("**🧪 Clinical Trials**")
+                                        if literature['clinical_trials']:
+                                            for trial in literature['clinical_trials']:
+                                                st.markdown(
+                                                    f"**{trial.get('title', 'N/A')}**  \n"
+                                                    f"Status: {trial.get('status', 'N/A')}  \n"
+                                                    f"Phase: {', '.join(trial.get('phase', []))}  \n"
+                                                    f"[View]({trial.get('url', '#')})"
+                                                )
+                                                st.markdown("---")
+                                else:
+                                    st.info("ℹ️ No literature evidence found. This may be a novel signal or require different search terms.")
         
         # Filter options
         st.markdown("---")

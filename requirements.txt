@@ -17,3 +17,5 @@ transformers==4.35.0
 # Uncomment below for local development with ML features:
 # torch==2.1.0
 # For Streamlit Cloud, install via: pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Enhanced fuzzy matching (better performance than fuzzywuzzy, MIT licensed)
+rapidfuzz==3.5.2

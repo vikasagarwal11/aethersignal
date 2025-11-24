@@ -74,7 +74,21 @@ def apply_filters(df: pd.DataFrame, filters: Dict) -> pd.DataFrame:
     # Reaction filter
     if 'reaction' in filters:
         reaction_series = get_normalized('reaction')
-        mask = build_mask(reaction_series, filters['reaction'])
+        reaction_value = filters['reaction']
+        reaction_logic = filters.get('reaction_logic', 'OR')  # Default to OR
+        
+        # If multiple reactions and AND logic, need to match ALL
+        if isinstance(reaction_value, list) and len(reaction_value) > 1 and reaction_logic == 'AND':
+            # AND logic: case must contain ALL reactions
+            mask = None
+            for reaction in reaction_value:
+                single_mask = build_mask(reaction_series, reaction)
+                if single_mask is not None:
+                    mask = single_mask if mask is None else (mask & single_mask)
+        else:
+            # OR logic (default): case matches ANY reaction
+            mask = build_mask(reaction_series, reaction_value)
+        
         if mask is not None:
             apply_mask(mask)
     

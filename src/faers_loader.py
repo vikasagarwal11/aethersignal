@@ -64,6 +64,7 @@ ESSENTIAL_COLUMNS = {
     'isr',
     'case',
     'caseid',
+    'primaryid',
     'drug_name',
     'drug_count',
     'reaction',
@@ -82,6 +83,20 @@ ESSENTIAL_COLUMNS = {
     'receive_date',
     'outcome',
     'outc_cod',
+    # Additional fields for case processing
+    'dechal',
+    'rechal',
+    'dose_amt',
+    'dose_unit',
+    'dose_form',
+    'route',
+    'role_cod',
+    'start_dt',
+    'end_dt',
+    'dur',
+    'dur_cod',
+    'indi_pt',
+    'rpsr_cod',
 }
 
 LOAD_WARNINGS: List[str] = []
@@ -237,15 +252,36 @@ def load_faers_folder(folder_path: str, progress_callback=None) -> Optional[pd.D
                         # Skip if drug column doesn't exist after standardization
                         continue
                     
-                    # Aggregate drug names and count rows
+                    # Aggregate drug names and additional fields
                     # Don't try to use drug_seq in aggregation - just count rows directly
-                    drug_agg = df.groupby(key_column).agg({
-                        'drug': lambda x: '; '.join(str(v) for v in x.dropna().unique())
-                    }).reset_index()
+                    def agg_unique(x):
+                        """Aggregate unique values, joining with semicolon."""
+                        unique_vals = x.dropna().unique()
+                        if len(unique_vals) == 0:
+                            return None
+                        return '; '.join(str(v) for v in unique_vals)
+                    
+                    agg_dict = {'drug': agg_unique}
+                    
+                    # Aggregate additional DRUG fields (preserve unique values)
+                    for field in ['dechal', 'rechal', 'dose_amt', 'dose_unit', 'dose_form', 'route', 'role_cod']:
+                        if field in df.columns:
+                            agg_dict[field] = agg_unique
+                    
+                    drug_agg = df.groupby(key_column).agg(agg_dict).reset_index()
                     
                     # Add count column (size of each group) - this always works
                     drug_agg['drug_count'] = df.groupby(key_column).size().values
-                    drug_agg.columns = [key_column, 'drug_name', 'drug_count']
+                    
+                    # Rename drug to drug_name
+                    drug_agg.rename(columns={'drug': 'drug_name'}, inplace=True)
+                    
+                    # Normalize drug names (enhanced fuzzy matching)
+                    try:
+                        from src.drug_name_normalization import normalize_drug_column
+                        drug_agg = normalize_drug_column(drug_agg, drug_column='drug_name')
+                    except Exception:
+                        pass  # Continue without normalization if it fails
                     
                     combined_df = combined_df.merge(drug_agg, on=key_column, how='left')
                     files_processed += 1
@@ -269,6 +305,31 @@ def load_faers_folder(folder_path: str, progress_callback=None) -> Optional[pd.D
                     # Take first outcome per case
                     outcome_df = df.groupby(key_column).first().reset_index()
                     combined_df = combined_df.merge(outcome_df, on=key_column, how='left', suffixes=('', '_outc'))
+                    files_processed += 1
+                elif file_type == 'THER':
+                    # Aggregate therapy fields (preserve first non-null values)
+                    ther_agg = df.groupby(key_column).agg({
+                        'start_dt': 'first',
+                        'end_dt': 'first',
+                        'dur': 'first',
+                        'dur_cod': 'first'
+                    }).reset_index()
+                    combined_df = combined_df.merge(ther_agg, on=key_column, how='left', suffixes=('', '_ther'))
+                    files_processed += 1
+                elif file_type == 'INDI':
+                    # Aggregate indications
+                    if 'indi_pt' in df.columns:
+                        indi_agg = df.groupby(key_column).agg({
+                            'indi_pt': lambda x: '; '.join(str(v) for v in x.dropna().unique())
+                        }).reset_index()
+                        indi_agg.rename(columns={'indi_pt': 'indication'}, inplace=True)
+                        combined_df = combined_df.merge(indi_agg, on=key_column, how='left', suffixes=('', '_indi'))
+                    files_processed += 1
+                elif file_type == 'RPSR':
+                    # Take first reporter source per case
+                    rpsr_df = df.groupby(key_column).first().reset_index()
+                    if 'rpsr_cod' in rpsr_df.columns:
+                        combined_df = combined_df.merge(rpsr_df[[key_column, 'rpsr_cod']], on=key_column, how='left', suffixes=('', '_rpsr'))
                     files_processed += 1
                 else:
                     # For other files, merge on first occurrence
@@ -545,6 +606,15 @@ def _standardize_faers_columns(df: pd.DataFrame, file_type: str) -> None:
     if ft == 'DRUG':
         # DRUG files have: primaryid, caseid, drug_seq, drugname, prod_ai, etc.
         ensure_column('drug', ['drugname', 'medicinalproduct', 'prod_ai', 'drug_name'])
+        # Preserve additional DRUG file fields for case processing
+        # dechal, rechal, dose_amt, dose_unit, dose_form, route, role_cod
+        ensure_column('dechal', ['dechal', 'dechallenge', 'dechallenge_code'])
+        ensure_column('rechal', ['rechal', 'rechallenge', 'rechallenge_code'])
+        ensure_column('dose_amt', ['dose_amt', 'dose_amount', 'dose'])
+        ensure_column('dose_unit', ['dose_unit', 'dose_units', 'unit'])
+        ensure_column('dose_form', ['dose_form', 'doseform', 'form'])
+        ensure_column('route', ['route', 'route_cod', 'route_code'])
+        ensure_column('role_cod', ['role_cod', 'role_code', 'drug_role'])
         # drug_seq should already exist in DRUG files - no need to create it
         # If it doesn't exist, we'll use key_column for counting
     elif ft == 'REAC':
@@ -577,6 +647,11 @@ def _standardize_faers_columns(df: pd.DataFrame, file_type: str) -> None:
                 if alt in df.columns:
                     df.rename(columns={alt: 'dsg_drug_seq'}, inplace=True)
                     break
+        # Preserve therapy date and duration fields
+        ensure_column('start_dt', ['start_dt', 'start_date', 'therapy_start', 'dsg_dt'])
+        ensure_column('end_dt', ['end_dt', 'end_date', 'therapy_end'])
+        ensure_column('dur', ['dur', 'duration', 'therapy_duration'])
+        ensure_column('dur_cod', ['dur_cod', 'duration_code', 'dur_code'])
     elif ft == 'RPSR':
         # RPSR files have: primaryid, caseid, rpsr_cod
         ensure_column('rpsr_cod', ['source', 'report_source', 'rpsr_cod', 'rpsr_code'])
