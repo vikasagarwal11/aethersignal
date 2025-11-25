@@ -166,6 +166,10 @@ def render_schema_mapper(raw_df: pd.DataFrame, detected_mapping: Dict[str, str])
     # Show column preview
     st.markdown("---")
     st.markdown("#### 📊 Column Preview")
+    try:
+        multi_value_flags = pv_schema.detect_multi_value_columns(raw_df, detected_mapping)
+    except Exception:
+        multi_value_flags = {}
     with st.expander("View available columns and sample data", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -173,6 +177,12 @@ def render_schema_mapper(raw_df: pd.DataFrame, detected_mapping: Dict[str, str])
             for col in available_columns:
                 non_null_count = raw_df[col].notna().sum()
                 st.caption(f"• `{col}` ({non_null_count:,} non-null values)")
+            flagged = [f"`{k}`" for k, v in multi_value_flags.items() if v]
+            if flagged:
+                st.info(
+                    "⚠️ Multi-value columns detected (split on '; ' or commas): "
+                    + ", ".join(flagged)
+                )
         with col2:
             st.markdown("**Sample Data (first 3 rows):**")
             st.dataframe(

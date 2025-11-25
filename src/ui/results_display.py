@@ -205,22 +205,6 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
                 "quantum_enabled": st.session_state.get("quantum_enabled", False),
             },
         )
-        
-        # Audit logging for queries
-        try:
-            from src.audit_trail import log_audit_event
-            log_audit_event(
-                event="query_executed",
-                details={
-                    "query": query_text[:100] if query_text else "",
-                    "filters": {k: str(v)[:50] for k, v in filters.items()},
-                    "source": source,
-                    "matching_cases": summary.get("matching_cases", 0),
-                }
-            )
-        except Exception:
-            pass  # Silently fail
-        
         # Add to query history
         query_entry = {
             "timestamp": datetime.now().isoformat(),
@@ -249,6 +233,21 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     start_time = time.perf_counter()
     summary = cached_get_summary_stats(filtered_df, normalized_df)
     _log_perf_event("summary_stats", time.perf_counter() - start_time, {"matches": len(filtered_df)})
+
+    # Audit logging for queries (after summary is available)
+    try:
+        from src.audit_trail import log_audit_event
+        log_audit_event(
+            event="query_executed",
+            details={
+                "query": query_text[:100] if query_text else "",
+                "filters": {k: str(v)[:50] for k, v in filters.items()},
+                "source": source,
+                "matching_cases": summary.get("matching_cases", len(filtered_df)),
+            }
+        )
+    except Exception:
+        pass  # Silently fail
 
     overview_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
         ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]

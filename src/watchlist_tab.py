@@ -120,7 +120,7 @@ def show_watchlist_tab():
 
                 # Track analytics
                 if st.session_state.get("analytics_enabled"):
-                    import analytics
+                    from src import analytics
 
                     analytics.log_event(
                         "watchlist_run",

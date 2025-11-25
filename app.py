@@ -91,16 +91,13 @@ div[data-testid="stButton"] > button[kind="primary"] {
     font-weight: 600 !important;
     height: auto !important;
     min-height: 60px !important;
-}
-
-button[kind="primary"][data-testid="baseButton-secondary"]:has-text("⚛️") {
     background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
-    box-shadow: 0 8px 25px rgba(59,130,246,0.4) !important;
+    box-shadow: 0 8px 25px rgba(59,130,246,0.25) !important;
 }
 
-button[kind="primary"][data-testid="baseButton-secondary"]:has-text("🌐") {
-    background: linear-gradient(135deg, #10b981, #059669) !important;
-    box-shadow: 0 8px 25px rgba(16,185,129,0.4) !important;
+div[data-testid="stButton"] > button[kind="primary"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(59,130,246,0.35) !important;
 }
 </style>
 """, unsafe_allow_html=True)

@@ -27,5 +27,6 @@ ENV PORT=8000
 EXPOSE 8000
 
 # Run the API
-CMD ["cd", "api", "&&", "uvicorn", "social_api:app", "--host", "0.0.0.0", "--port", "8000"]
+WORKDIR /app/api
+CMD ["uvicorn", "social_api:app", "--host", "0.0.0.0", "--port", "8000"]
 
