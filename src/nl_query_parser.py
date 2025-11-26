@@ -5,7 +5,8 @@ Converts natural language queries to filter dictionaries.
 
 import re
 from typing import Dict, List, Optional, Tuple, Union
-from datetime import datetime
+from datetime import datetime, timedelta
+import pandas as pd
 from src.utils import parse_date, extract_age, normalize_text
 
 
@@ -48,12 +49,161 @@ def detect_negations(query: str) -> List[str]:
     return negated_reactions
 
 
-def parse_query_to_filters(query: str) -> Dict:
+def _detect_concepts(query_lower: str, filters: Dict) -> None:
+    """
+    Detect conceptual terms and convert them to specific filters.
+    
+    Handles:
+    - Population groups: "seniors", "elderly", "pediatrics", "children", "adults"
+    - Temporal concepts: "recently", "lately", "in the last X months/years"
+    - Special populations: "pregnant women", "women of childbearing age"
+    - Severity concepts: "life-threatening", "hospitalization"
+    - Emerging signals: "new", "emerging", "novel"
+    
+    Args:
+        query_lower: Lowercase query string
+        filters: Filter dictionary to update (modified in place)
+    """
+    # Population groups - Age-based
+    if re.search(r'\b(seniors?|elderly|older adults?|geriatric)\b', query_lower):
+        # Seniors typically 65+
+        if 'age_min' not in filters:
+            filters['age_min'] = 65
+        elif filters.get('age_min', 0) < 65:
+            filters['age_min'] = 65
+    
+    if re.search(r'\b(pediatric|pediatrics|children|kids?|infants?|neonates?|toddlers?)\b', query_lower):
+        # Pediatrics typically < 18
+        if 'age_max' not in filters:
+            filters['age_max'] = 17
+        elif filters.get('age_max', 999) > 17:
+            filters['age_max'] = 17
+    
+    if re.search(r'\b(adults?|adult patients?)\b', query_lower):
+        # Adults typically 18-64 (if not conflicting with seniors/pediatrics)
+        if 'age_min' not in filters and 'age_max' not in filters:
+            filters['age_min'] = 18
+            filters['age_max'] = 64
+    
+    # Temporal concepts - "recently", "lately", "in the last X"
+    if re.search(r'\b(recently|lately|recent|current|latest)\b', query_lower):
+        # Default to last 12 months if no date specified
+        if 'date_from' not in filters:
+            twelve_months_ago = datetime.now() - timedelta(days=365)
+            filters['date_from'] = twelve_months_ago.strftime('%Y-%m-%d')
+    
+    # "In the last X months/years"
+    last_pattern = re.search(r'\b(?:in|over|during|for)\s+(?:the\s+)?last\s+(\d+)\s+(month|months|year|years)\b', query_lower)
+    if last_pattern:
+        amount = int(last_pattern.group(1))
+        unit = last_pattern.group(2).lower()
+        if 'date_from' not in filters:
+            if 'month' in unit:
+                days_ago = amount * 30
+            else:  # years
+                days_ago = amount * 365
+            start_date = datetime.now() - timedelta(days=days_ago)
+            filters['date_from'] = start_date.strftime('%Y-%m-%d')
+    
+    # "Past X months/years"
+    past_pattern = re.search(r'\b(?:past|previous|prior)\s+(\d+)\s+(month|months|year|years)\b', query_lower)
+    if past_pattern:
+        amount = int(past_pattern.group(1))
+        unit = past_pattern.group(2).lower()
+        if 'date_from' not in filters:
+            if 'month' in unit:
+                days_ago = amount * 30
+            else:  # years
+                days_ago = amount * 365
+            start_date = datetime.now() - timedelta(days=days_ago)
+            filters['date_from'] = start_date.strftime('%Y-%m-%d')
+    
+    # Special populations
+    if re.search(r'\b(pregnant\s+women?|pregnancy|expecting\s+mothers?)\b', query_lower):
+        filters['sex'] = 'F'
+        # Note: We don't have pregnancy status in standard schema, but we can filter by sex
+    
+    if re.search(r'\b(women?\s+of\s+childbearing\s+age|reproductive\s+age)\b', query_lower):
+        filters['sex'] = 'F'
+        # Typically 15-49 years
+        if 'age_min' not in filters:
+            filters['age_min'] = 15
+        if 'age_max' not in filters:
+            filters['age_max'] = 49
+    
+    # Severity concepts (enhance existing seriousness detection)
+    if re.search(r'\b(life.?threatening|fatal|death|mortality|lethal)\b', query_lower):
+        filters['seriousness'] = True
+    
+    if re.search(r'\b(hospitalization|hospitalized|hospital\s+admission)\b', query_lower):
+        filters['seriousness'] = True
+    
+    # "New" or "emerging" - typically means recent
+    if re.search(r'\b(new|emerging|novel|recent\s+signals?)\b', query_lower):
+        if 'date_from' not in filters:
+            # Default to last 18 months for "new" signals
+            eighteen_months_ago = datetime.now() - timedelta(days=545)
+            filters['date_from'] = eighteen_months_ago.strftime('%Y-%m-%d')
+
+
+def _detect_term_in_dataset(term: str, normalized_df: Optional[pd.DataFrame]) -> Tuple[Optional[str], bool, bool]:
+    """
+    Check if a term exists in the dataset as a drug or reaction.
+    
+    Args:
+        term: Term to check
+        normalized_df: Normalized DataFrame with drug_name and reaction columns
+        
+    Returns:
+        Tuple of (matched_term, is_drug, is_reaction)
+        - matched_term: The actual matched term from dataset (normalized), or None
+        - is_drug: True if term matches a drug in the dataset
+        - is_reaction: True if term matches a reaction in the dataset
+    """
+    if normalized_df is None or normalized_df.empty:
+        return None, False, False
+    
+    term_normalized = normalize_text(term)
+    if len(term_normalized) < 3:  # Too short to be meaningful
+        return None, False, False
+    
+    is_drug = False
+    is_reaction = False
+    matched_term = None
+    
+    # Check drugs
+    if 'drug_name' in normalized_df.columns:
+        drug_series = normalized_df['drug_name'].astype(str).str.split('; ').explode()
+        drug_normalized = drug_series.apply(normalize_text)
+        # Check for exact or partial match
+        matches = drug_normalized[drug_normalized.str.contains(re.escape(term_normalized), na=False, case=False)]
+        if not matches.empty:
+            is_drug = True
+            # Get the most common match
+            matched_term = matches.value_counts().index[0] if len(matches) > 0 else term
+    
+    # Check reactions
+    if 'reaction' in normalized_df.columns:
+        reaction_series = normalized_df['reaction'].astype(str).str.split('; ').explode()
+        reaction_normalized = reaction_series.apply(normalize_text)
+        # Check for exact or partial match
+        matches = reaction_normalized[reaction_normalized.str.contains(re.escape(term_normalized), na=False, case=False)]
+        if not matches.empty:
+            is_reaction = True
+            # If we haven't found a drug match, use reaction match
+            if not is_drug:
+                matched_term = matches.value_counts().index[0] if len(matches) > 0 else term
+    
+    return matched_term, is_drug, is_reaction
+
+
+def parse_query_to_filters(query: str, normalized_df: Optional[pd.DataFrame] = None) -> Dict:
     """
     Parse natural language query to filter dictionary.
     
     Args:
         query: Natural language query string
+        normalized_df: Optional normalized DataFrame to use for context-aware detection
         
     Returns:
         Dictionary with filter keys: drug, reaction, age_min, age_max, 
@@ -179,6 +329,9 @@ def parse_query_to_filters(query: str) -> Dict:
     elif re.search(r'\b(female|woman|women|f\b)', query_lower):
         filters['sex'] = 'F'
     
+    # Concept detection: Population groups and temporal concepts
+    _detect_concepts(query_lower, filters)
+    
     # Extract country
     country_patterns = [
         r'country[\s:]+([a-z\s]+?)(?:\.|,|$|\s+and)',
@@ -227,6 +380,96 @@ def parse_query_to_filters(query: str) -> Dict:
         year = int(year_match.group(0))
         filters['date_from'] = f'{year}-01-01'
         filters['date_to'] = f'{year}-12-31'
+    
+    # Context-aware detection: If no drugs/reactions found with explicit keywords,
+    # try to detect them from the dataset
+    if normalized_df is not None and not normalized_df.empty:
+        # Extract potential terms that weren't matched by explicit patterns
+        # Look for words after context phrases (case-insensitive)
+        if 'drug' not in filters and 'reaction' not in filters:
+            # Common stop words to exclude
+            stop_words = {'all', 'any', 'some', 'the', 'and', 'or', 'for', 'with', 'cases', 'reports', 
+                         'events', 'show', 'find', 'search', 'filter', 'get', 'related', 'to', 'about', 
+                         'involving', 'containing', 'including', 'from', 'since', 'until', 'before', 'after'}
+            
+            # Pattern 1: Extract terms after context phrases (case-insensitive)
+            # "related to X", "with X", "for X", "about X", "involving X"
+            context_patterns = [
+                r'(?:related\s+to|with|for|about|involving|containing|including)[\s]+([a-z0-9]+(?:\s+[a-z0-9]+)*)',
+                r'(?:find|show|search|filter|get)[\s]+(?:all|any|some)?[\s]*(?:cases|reports|events)?[\s]*(?:related\s+to|with|for|about|involving)?[\s]+([a-z0-9]+(?:\s+[a-z0-9]+)*)',
+            ]
+            
+            potential_terms = []
+            for pattern in context_patterns:
+                matches = re.findall(pattern, query_lower, re.IGNORECASE)
+                for match in matches:
+                    if isinstance(match, tuple):
+                        match = match[0] if match[0] else (match[1] if len(match) > 1 else "")
+                    term = match.strip()
+                    # Extract words from the term
+                    words = term.split()
+                    for word in words:
+                        # Filter out stop words, short words, numbers only
+                        if (len(word) >= 4 and  # At least 4 characters (e.g., "dupixent")
+                            word.lower() not in stop_words and
+                            not re.match(r'^\d+$', word) and
+                            word.lower() not in [d.lower() if isinstance(d, str) else str(d).lower() for d in (drugs if 'drug' in filters else [])] and
+                            word.lower() not in [r.lower() if isinstance(r, str) else str(r).lower() for r in (unique_reactions if 'reaction' in filters else [])]):
+                            potential_terms.append(word)
+            
+            # Pattern 2: Also catch standalone capitalized terms (likely drug/reaction names)
+            # This helps with queries like "Dupixent cases" or "Show Aspirin"
+            capitalized_matches = re.findall(r'\b([A-Z][a-z]{3,}(?:\s+[A-Z][a-z]+)*)\b', query)
+            for match in capitalized_matches:
+                words = match.split()
+                for word in words:
+                    if (len(word) >= 4 and
+                        word.lower() not in stop_words and
+                        word.lower() not in [t.lower() for t in potential_terms]):
+                        potential_terms.append(word)
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_potential_terms = []
+            for term in potential_terms:
+                term_lower = term.lower()
+                if term_lower not in seen:
+                    seen.add(term_lower)
+                    unique_potential_terms.append(term)
+            
+            # Check each potential term against the dataset
+            for term in unique_potential_terms[:5]:  # Limit to first 5 to avoid performance issues
+                matched_term, is_drug, is_reaction = _detect_term_in_dataset(term, normalized_df)
+                if matched_term:
+                    if is_drug and 'drug' not in filters:
+                        # Prefer drug over reaction if both match
+                        filters['drug'] = matched_term
+                        break  # Found a drug, stop searching
+                    elif is_reaction and 'reaction' not in filters and not is_drug:
+                        filters['reaction'] = matched_term
+                        break  # Found a reaction, stop searching
+                    # If both match, we already set drug above, so skip reaction
+            
+            # Fallback: If still no drugs/reactions found, check ALL remaining words in query
+            # This catches standalone lowercase words like "dupixent" or "aspirin"
+            if 'drug' not in filters and 'reaction' not in filters:
+                # Extract all words from the query (excluding already processed terms and stop words)
+                all_words = re.findall(r'\b([a-z]{4,})\b', query_lower)  # Words with 4+ lowercase letters
+                for word in all_words:
+                    if (word not in stop_words and
+                        word not in [t.lower() for t in unique_potential_terms] and
+                        not re.match(r'^\d+$', word)):
+                        matched_term, is_drug, is_reaction = _detect_term_in_dataset(word, normalized_df)
+                        if matched_term:
+                            if is_drug:
+                                filters['drug'] = matched_term
+                                break  # Found a drug, stop searching
+                            elif is_reaction:
+                                filters['reaction'] = matched_term
+                                break  # Found a reaction, stop searching
+                        # Limit fallback to first 10 words to avoid performance issues
+                        if all_words.index(word) >= 9:
+                            break
     
     return filters
 

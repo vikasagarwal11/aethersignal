@@ -182,6 +182,14 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
             + ", ".join(missing_cols)
         )
 
+    # Show query method and confidence (if available)
+    query_method = st.session_state.get("last_query_method")
+    query_confidence = st.session_state.get("last_query_confidence")
+    if query_method:
+        method_label = "🤖 AI-enhanced" if query_method == "llm_fallback" else "⚙️ Rule-based"
+        confidence_pct = int(query_confidence * 100) if query_confidence else 100
+        st.caption(f"{method_label} parsing (confidence: {confidence_pct}%)")
+    
     # Show AND/OR logic indicator for multiple reactions
     if "reaction" in filters and isinstance(filters.get("reaction"), list) and len(filters.get("reaction", [])) > 1:
         reaction_logic = filters.get("reaction_logic", "OR")
@@ -249,13 +257,26 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     except Exception:
         pass  # Silently fail
 
-    overview_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
-        ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]
-    )
+    # Add conversational response tab if LLM is enabled
+    use_llm = st.session_state.get("use_llm", False)
+    if use_llm:
+        overview_tab, conversational_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
+            ["📊 Overview", "💬 Conversational", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]
+        )
+    else:
+        overview_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
+            ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]
+        )
+        conversational_tab = None  # Not available
 
     # ---------------- Overview Tab ----------------
     with overview_tab:
         _render_overview_tab(filters, source_label, summary, filtered_df, normalized_df)
+
+    # ---------------- Conversational Tab (if LLM enabled) ----------------
+    if conversational_tab is not None:
+        with conversational_tab:
+            _render_conversational_tab(filters, query_text, summary, filtered_df, normalized_df)
 
     # ---------------- Signals Tab ----------------
     with signals_tab:
@@ -533,6 +554,92 @@ def _render_overview_tab(filters: Dict, source_label: str, summary: Dict,
                 pass  # Silently fail if chart can't be created
             
             st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _render_conversational_tab(
+    filters: Dict,
+    query_text: str,
+    summary: Dict,
+    filtered_df: pd.DataFrame,
+    normalized_df: pd.DataFrame
+):
+    """Render conversational response tab with AI-generated insights."""
+    st.markdown("<div class='block-card'>", unsafe_allow_html=True)
+    st.subheader("💬 Conversational Response")
+    st.caption("AI-generated natural language interpretation of your query results")
+    
+    try:
+        from src.ai.conversational_engine import process_conversational_query
+        
+        use_llm = st.session_state.get("use_llm", False)
+        result = process_conversational_query(query_text, normalized_df, use_llm=use_llm)
+        
+        # Display response
+        st.markdown("### 📝 Response")
+        st.markdown(result.get("response", "Unable to generate response."))
+        
+        # Show red flags if any
+        red_flags = result.get("red_flags", [])
+        if red_flags:
+            st.markdown("---")
+            st.markdown("### ⚠️ Red Flags")
+            for flag in red_flags:
+                st.warning(f"• {flag}")
+        
+        # Show trends
+        trends = result.get("trends", {})
+        if trends.get("has_trend"):
+            st.markdown("---")
+            st.markdown("### 📈 Trends")
+            if trends.get("direction"):
+                direction_icon = "📈" if trends["direction"] == "increasing" else "📉" if trends["direction"] == "decreasing" else "➡️"
+                st.info(f"{direction_icon} Trend: {trends['direction'].title()}")
+            if trends.get("spikes"):
+                st.info(f"🔍 Detected {len(trends['spikes'])} significant spike(s)")
+        
+        # Option to generate comprehensive summary
+        if "drug" in filters and "reaction" in filters:
+            st.markdown("---")
+            if st.button("📊 Generate Comprehensive Signal Summary", use_container_width=True):
+                with st.spinner("Generating comprehensive summary..."):
+                    try:
+                        from src.ai.signal_summarizer import generate_comprehensive_summary
+                        drug = filters["drug"] if isinstance(filters["drug"], str) else filters["drug"][0]
+                        reaction = filters["reaction"] if isinstance(filters["reaction"], str) else filters["reaction"][0]
+                        prr_ror = result.get("prr_ror")
+                        
+                        summary_text = generate_comprehensive_summary(
+                            drug, reaction, summary, prr_ror, trends, use_llm=use_llm
+                        )
+                        st.markdown("### 📋 Comprehensive Summary")
+                        st.markdown(summary_text)
+                        
+                        # Add causal explanation if LLM enabled
+                        if use_llm:
+                            st.markdown("---")
+                            if st.button("🧠 Generate Causal Explanation", use_container_width=True):
+                                with st.spinner("Analyzing mechanisms..."):
+                                    try:
+                                        from src.ai.signal_summarizer import generate_causal_explanation
+                                        causal_explanation = generate_causal_explanation(
+                                            drug, reaction, prr_ror, summary
+                                        )
+                                        if causal_explanation:
+                                            st.markdown("### ⚗️ Causal Reasoning")
+                                            st.markdown(causal_explanation)
+                                        else:
+                                            st.info("Unable to generate causal explanation. This may require specialized models (Claude Opus).")
+                                    except Exception as e:
+                                        st.error(f"Error generating causal explanation: {str(e)}")
+                    except Exception as e:
+                        st.error(f"Error generating summary: {str(e)}")
+    
+    except ImportError:
+        st.info("💡 Conversational features require AI modules. Enable AI-enhanced query interpretation in query settings.")
+    except Exception as e:
+        st.error(f"Error generating conversational response: {str(e)}")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame, 
@@ -829,11 +936,34 @@ def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame,
                         
                         # Literature Evidence
                         with st.expander("📚 Literature Evidence", expanded=False):
+                            use_llm = st.session_state.get("use_llm", False)
                             if st.button("🔍 Search Literature", key="search_literature", use_container_width=True):
                                 with st.spinner("Searching PubMed and ClinicalTrials.gov..."):
-                                    literature = enrich_signal_with_literature(drug, reaction)
+                                    # Use enhanced literature if LLM enabled
+                                    if use_llm:
+                                        from src.ai.literature_enhancer import enrich_signal_with_enhanced_literature
+                                        literature = enrich_signal_with_enhanced_literature(drug, reaction, use_llm=True)
+                                    else:
+                                        from src.literature_integration import enrich_signal_with_literature
+                                        literature = enrich_signal_with_literature(drug, reaction)
                                     
                                     if literature['total_pubmed'] > 0 or literature['total_trials'] > 0:
+                                        # Show LLM insights if available
+                                        if use_llm and literature.get('key_findings'):
+                                            st.markdown("**🔍 AI-Generated Insights**")
+                                            with st.expander("📊 Key Findings Across Papers", expanded=True):
+                                                st.write(literature['key_findings'])
+                                            
+                                            if literature.get('mechanisms'):
+                                                with st.expander("⚗️ Proposed Mechanisms", expanded=False):
+                                                    st.write(literature['mechanisms'])
+                                            
+                                            if literature.get('consensus'):
+                                                with st.expander("🎯 Consensus View", expanded=False):
+                                                    st.write(literature['consensus'])
+                                            
+                                            st.markdown("---")
+                                        
                                         col1, col2 = st.columns(2)
                                         
                                         with col1:
@@ -846,6 +976,14 @@ def _render_signals_tab(filters: Dict, summary: Dict, filtered_df: pd.DataFrame,
                                                         f"{article.get('journal', '')} ({article.get('year', 'N/A')})  \n"
                                                         f"[View on PubMed]({article.get('url', '#')})"
                                                     )
+                                                    
+                                                    # Show LLM summary if available
+                                                    if use_llm and literature.get('llm_summaries'):
+                                                        for summary_item in literature['llm_summaries']:
+                                                            if summary_item.get('pmid') == article.get('pmid') and summary_item.get('summary'):
+                                                                with st.expander("🤖 AI Summary", expanded=False):
+                                                                    st.write(summary_item['summary'])
+                                                    
                                                     if article.get('abstract'):
                                                         with st.expander("Abstract", expanded=False):
                                                             st.write(article['abstract'])

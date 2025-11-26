@@ -19,3 +19,8 @@ transformers==4.35.0
 # For Streamlit Cloud, install via: pip install torch --index-url https://download.pytorch.org/whl/cpu
 # Enhanced fuzzy matching (better performance than fuzzywuzzy, MIT licensed)
 rapidfuzz==3.5.2
+# AI/LLM dependencies (optional - install if using AI features)
+openai>=1.0.0
+anthropic>=0.18.0
+huggingface_hub>=0.20.0  # For BioGPT via Hugging Face Inference API
+# groq>=0.4.0  # Uncomment if using Groq API (for fast inference, not BioGPT)

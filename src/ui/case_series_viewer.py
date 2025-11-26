@@ -245,6 +245,45 @@ def _render_case_details(df: pd.DataFrame) -> None:
         if narrative and str(narrative) != "nan":
             st.markdown("**📝 Narrative**")
             st.text_area("", value=str(narrative), height=150, disabled=True, key=f"narrative_{selected_case}")
+            
+            # AI narrative analysis (if LLM enabled)
+            use_llm = st.session_state.get("use_llm", False)
+            if use_llm and len(str(narrative)) > 50:
+                if st.button("🤖 Analyze Narrative", key=f"analyze_narrative_{selected_case}"):
+                    with st.spinner("Analyzing narrative..."):
+                        try:
+                            from src.ai.narrative_analyzer import analyze_case_narrative
+                            existing_data = case_row.to_dict()
+                            analysis = analyze_case_narrative(str(narrative), existing_data, use_llm=True)
+                            
+                            if analysis.get('summary'):
+                                st.markdown("**📋 Summary**")
+                                st.write(analysis['summary'])
+                            
+                            if analysis.get('extracted_data'):
+                                extracted = analysis['extracted_data']
+                                if extracted.get('drugs') or extracted.get('reactions'):
+                                    st.markdown("**🔍 Extracted Information**")
+                                    if extracted.get('drugs'):
+                                        st.write(f"**Drugs:** {', '.join(extracted['drugs'])}")
+                                    if extracted.get('reactions'):
+                                        st.write(f"**Reactions:** {', '.join(extracted['reactions'])}")
+                                    if extracted.get('age'):
+                                        st.write(f"**Age:** {extracted['age']}")
+                                    if extracted.get('sex'):
+                                        st.write(f"**Sex:** {extracted['sex']}")
+                            
+                            if analysis.get('missing_info'):
+                                st.markdown("**⚠️ Missing Information**")
+                                for item in analysis['missing_info'][:5]:
+                                    st.caption(f"• {item}")
+                            
+                            if analysis.get('inconsistencies'):
+                                st.markdown("**🔍 Inconsistencies**")
+                                for inconsistency in analysis['inconsistencies']:
+                                    st.warning(f"• {inconsistency}")
+                        except Exception as e:
+                            st.error(f"Error analyzing narrative: {str(e)}")
     
     # Time-to-onset (if available)
     if "tto_days" in case_row.index and pd.notna(case_row["tto_days"]):

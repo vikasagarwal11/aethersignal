@@ -16,17 +16,23 @@ from src import watchlist_tab
 
 def _build_dynamic_starter_questions(
     normalized_df,
-) -> Tuple[List[Tuple[str, str, str]], List[str], List[str]]:
+) -> Tuple[List[Tuple[str, str, str]], List[str], List[str], List[str], List[str]]:
     """
     Build data‑driven starter questions and top drug/reaction lists.
 
     Returns:
-        (starter_questions, top_drugs, top_reactions)
+        (starter_questions, top_drugs, top_reactions, all_drugs, all_reactions)
         starter_questions: list of (title, query, icon)
+        top_drugs: top 8 drugs by frequency
+        top_reactions: top 8 reactions by frequency
+        all_drugs: all unique drugs (sorted alphabetically)
+        all_reactions: all unique reactions (sorted alphabetically)
     """
     starter_questions: List[Tuple[str, str, str]] = []
     top_drugs: List[str] = []
     top_reactions: List[str] = []
+    all_drugs: List[str] = []
+    all_reactions: List[str] = []
 
     if normalized_df is None or normalized_df.empty:
         starter_questions = [
@@ -34,15 +40,21 @@ def _build_dynamic_starter_questions(
             ("Trending reactions", "What are the top reactions?", "📈"),
             ("Demographics", "Show cases by patient demographics", "👥"),
         ]
-        return starter_questions, top_drugs, top_reactions
+        return starter_questions, top_drugs, top_reactions, all_drugs, all_reactions
 
     # Top drugs / reactions (used for both tiles and chips)
     if "drug_name" in normalized_df.columns:
         drug_series = normalized_df["drug_name"].astype(str).str.split("; ").explode()
+        # Get top 8 for prominent display
         top_drugs = drug_series.value_counts().head(8).index.tolist()
+        # Get ALL unique drugs (sorted alphabetically for searchability)
+        all_drugs = sorted(drug_series.dropna().unique().tolist(), key=str.lower)
     if "reaction" in normalized_df.columns:
         reaction_series = normalized_df["reaction"].astype(str).str.split("; ").explode()
+        # Get top 8 for prominent display
         top_reactions = reaction_series.value_counts().head(8).index.tolist()
+        # Get ALL unique reactions (sorted alphabetically for searchability)
+        all_reactions = sorted(reaction_series.dropna().unique().tolist(), key=str.lower)
 
     top_drug = top_drugs[0] if top_drugs else None
     top_reaction = top_reactions[0] if top_reactions else None
@@ -153,7 +165,7 @@ def _build_dynamic_starter_questions(
 
     # Cap to 5 tiles for clarity
     starter_questions = starter_questions[:5]
-    return starter_questions, top_drugs, top_reactions
+    return starter_questions, top_drugs, top_reactions, all_drugs, all_reactions
 
 
 def render_nl_query_tab(normalized_df):
@@ -166,7 +178,7 @@ def render_nl_query_tab(normalized_df):
         "Step 2 always uses the dataset you loaded in Step 1."
     )
 
-    starter_questions, top_drugs, top_reactions = _build_dynamic_starter_questions(
+    starter_questions, top_drugs, top_reactions, all_drugs, all_reactions = _build_dynamic_starter_questions(
         normalized_df
     )
 
@@ -209,9 +221,44 @@ def render_nl_query_tab(normalized_df):
         if not run_query_enabled and query_text:
             st.info("ℹ️ Upload and load data first to run queries.")
 
+        # AI/LLM opt-in checkbox (with privacy warning)
+        use_llm = st.checkbox(
+            "🤖 Enable AI-enhanced features (optional)",
+            value=st.session_state.get("use_llm", False),
+            key="use_llm_checkbox",
+            help=(
+                "⚠️ Privacy Notice: When enabled, AI features include:\n"
+                "• Enhanced query interpretation\n"
+                "• Literature summarization & insights\n"
+                "• Case narrative analysis\n"
+                "• Causal reasoning for signals\n"
+                "• Enhanced MedDRA mapping\n\n"
+                "Your data remains private, but query text and case narratives may be sent to external AI services "
+                "(OpenAI/Claude/Groq). Disable for full privacy."
+            )
+        )
+        st.session_state.use_llm = use_llm
+
         if run_query and query_text and run_query_enabled:
             with st.spinner("🔎 Interpreting your query…"):
-                filters = nl_query_parser.parse_query_to_filters(query_text)
+                # Use hybrid router (rule-based first, LLM fallback if enabled)
+                try:
+                    from src.ai.hybrid_router import route_query
+                    filters, method, confidence = route_query(
+                        query_text, 
+                        normalized_df, 
+                        use_llm=use_llm,
+                        llm_confidence_threshold=0.6
+                    )
+                    # Store method for display
+                    st.session_state.last_query_method = method
+                    st.session_state.last_query_confidence = confidence
+                except ImportError:
+                    # Fallback to direct parser if AI module not available
+                    filters = nl_query_parser.parse_query_to_filters(query_text, normalized_df)
+                    st.session_state.last_query_method = "rule_based"
+                    st.session_state.last_query_confidence = 1.0
+                
                 is_valid, error_msg = nl_query_parser.validate_filters(filters)
                 if not is_valid:
                     st.error(
@@ -288,6 +335,39 @@ def render_nl_query_tab(normalized_df):
                         )
                         st.session_state.query_text = new_q
                         st.rerun()
+            
+            # Browse all drugs (collapsible, less prominent)
+            if all_drugs and len(all_drugs) > 6:
+                with st.expander(f"🔍 Browse all drugs ({len(all_drugs)} total)", expanded=False):
+                    selected_drugs = st.multiselect(
+                        "Select drug(s) to add to query",
+                        options=all_drugs,
+                        default=[],
+                        key="browse_all_drugs",
+                        help="Select one or more drugs. They will be added to your query with OR logic.",
+                    )
+                    if selected_drugs:
+                        current = st.session_state.get("query_text", "")
+                        current_lower = current.lower()
+                        new_drugs = []
+                        for drug in selected_drugs:
+                            drug_lower = drug.lower()
+                            # Check if drug is already in query
+                            if drug_lower not in current_lower or f"drug {drug_lower}" not in current_lower:
+                                new_drugs.append(drug)
+                        
+                        if new_drugs:
+                            # Add all new drugs with OR logic
+                            drug_terms = " OR ".join([f"drug {d}" for d in new_drugs])
+                            if current:
+                                new_q = f"{current} OR {drug_terms}".strip()
+                            else:
+                                new_q = f"Show cases with {drug_terms}"
+                            st.session_state.query_text = new_q
+                            st.rerun()
+                        else:
+                            st.info("ℹ️ All selected drugs are already in your query")
+        
         if top_reactions:
             st.caption("⚠️ Top reactions")
             for idx, reaction in enumerate(top_reactions[:6]):
@@ -321,6 +401,43 @@ def render_nl_query_tab(normalized_df):
                             )
                         st.session_state.query_text = new_q
                         st.rerun()
+            
+            # Browse all reactions (collapsible, less prominent)
+            if all_reactions and len(all_reactions) > 6:
+                with st.expander(f"🔍 Browse all reactions ({len(all_reactions)} total)", expanded=False):
+                    selected_reactions = st.multiselect(
+                        "Select reaction(s) to add to query",
+                        options=all_reactions,
+                        default=[],
+                        key="browse_all_reactions",
+                        help="Select one or more reactions. They will be added to your query with OR logic.",
+                    )
+                    if selected_reactions:
+                        current = st.session_state.get("query_text", "")
+                        current_lower = current.lower()
+                        new_reactions = []
+                        for reaction in selected_reactions:
+                            reaction_lower = reaction.lower()
+                            # Check if reaction is already in query
+                            if reaction_lower not in current_lower or f"reaction {reaction_lower}" not in current_lower:
+                                new_reactions.append(reaction)
+                        
+                        if new_reactions:
+                            # Add all new reactions with OR logic
+                            reaction_terms = " OR ".join([f"reaction {r}" for r in new_reactions])
+                            if current:
+                                # Check if there's already a reaction in the query
+                                has_reaction = "reaction" in current_lower
+                                if has_reaction:
+                                    new_q = f"{current} OR {reaction_terms}".strip()
+                                else:
+                                    new_q = f"{current} {reaction_terms}".strip()
+                            else:
+                                new_q = f"Show cases with {reaction_terms}"
+                            st.session_state.query_text = new_q
+                            st.rerun()
+                        else:
+                            st.info("ℹ️ All selected reactions are already in your query")
 
         # Saved queries
         st.markdown("---")

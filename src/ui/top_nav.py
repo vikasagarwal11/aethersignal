@@ -38,6 +38,16 @@ def render_top_nav() -> None:
         cursor: pointer !important;
         pointer-events: auto !important;
         user-select: none !important;
+        text-decoration: none !important;
+    }
+    
+    .nav-left:hover {
+        text-decoration: none !important;
+    }
+    
+    .nav-left .nav-icon {
+        text-decoration: none !important;
+        display: inline-block;
     }
     
     .nav-right {
@@ -107,7 +117,7 @@ def render_top_nav() -> None:
     <button id="aether-sidebar-reopen" title="Toggle navigation">☰</button>
 
     <div class="aether-top-nav">
-        <a class="nav-left" href="/" data-nav="home" target="_self">⚛️ <strong>AetherSignal</strong></a>
+        <a class="nav-left" href="/" data-nav="home" target="_self"><span class="nav-icon">⚛️</span> <strong>AetherSignal</strong></a>
         <div class="nav-right">
             <a class="nav-link" href="/" data-nav="home" target="_self">🏠 Home</a>
             <a class="nav-link" href="/Quantum_PV_Explorer" data-nav="quantum" target="_self">⚛️ Quantum PV</a>
