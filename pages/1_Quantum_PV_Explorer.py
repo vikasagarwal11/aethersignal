@@ -3,6 +3,10 @@ Quantum PV Explorer Page
 Main module for FAERS data analysis with quantum-inspired ranking.
 """
 
+# Load environment variables from .env file (must be first!)
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st
 
 from src.styles import apply_theme
@@ -10,6 +14,29 @@ from src.app_helpers import initialize_session
 from src.ui.top_nav import render_top_nav
 from src.ui import header, upload_section, query_interface, sidebar
 from src.ui.results_display import display_query_results
+
+# -------------------------------------------------------------------
+# Sidebar actions listener helpers
+# -------------------------------------------------------------------
+def _handle_nav_actions():
+    nav_action = st.session_state.get("nav_action")
+    if nav_action == "login":
+        st.switch_page("pages/Login.py")
+    elif nav_action == "register":
+        st.switch_page("pages/Register.py")
+    elif nav_action == "profile":
+        st.switch_page("pages/Profile.py")
+    elif nav_action == "logout":
+        try:
+            from src.auth.auth import logout_user
+            logout_user()
+        except Exception:
+            pass
+        st.session_state.nav_action = None
+        st.rerun()
+    if "nav_action" in st.session_state:
+        st.session_state.nav_action = None
+from src.auth.auth import is_authenticated
 
 
 # -------------------------------------------------------------------
@@ -39,6 +66,19 @@ initialize_session()
 # TOP NAVIGATION
 # -------------------------------------------------------------------
 render_top_nav()
+
+# Check authentication
+if not is_authenticated():
+    st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True)
+    st.warning("⚠️ Please login to access the Quantum PV Explorer.")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔐 Login", use_container_width=True):
+            st.switch_page("pages/Login.py")
+    with col2:
+        if st.button("📝 Register", use_container_width=True):
+            st.switch_page("pages/Register.py")
+    st.stop()
 
 # Prevent flicker on page load
 st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
@@ -222,4 +262,22 @@ else:
 # -------------------------------------------------------------------
 with st.sidebar:
     sidebar.render_sidebar()
-
+    # Listen for nav actions from top nav (login/register/profile/logout)
+    nav_action = st.session_state.get("nav_action")
+    if nav_action == "login":
+        st.switch_page("pages/Login.py")
+    elif nav_action == "register":
+        st.switch_page("pages/Register.py")
+    elif nav_action == "profile":
+        st.switch_page("pages/Profile.py")
+    elif nav_action == "logout":
+        try:
+            from src.auth.auth import logout_user
+            logout_user()
+        except Exception:
+            pass
+        st.session_state.nav_action = None
+        st.rerun()
+    # Clear action
+    if "nav_action" in st.session_state:
+        st.session_state.nav_action = None

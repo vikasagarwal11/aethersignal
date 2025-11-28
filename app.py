@@ -3,10 +3,15 @@ AetherSignal – Landing Page
 Multi-module platform for Pharmacovigilance exploration.
 """
 
+# Load environment variables from .env file (must be first!)
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
+from src.auth.auth import is_authenticated
 
 
 # -------------------------------------------------------------------
@@ -30,6 +35,14 @@ apply_theme()
 # TOP NAVIGATION
 # -------------------------------------------------------------------
 render_top_nav()
+
+# Handle login/register/profile page routing
+if st.session_state.get("show_login"):
+    st.switch_page("pages/Login.py")
+if st.session_state.get("show_register"):
+    st.switch_page("pages/Register.py")
+if st.session_state.get("show_profile"):
+    st.switch_page("pages/Profile.py")
 
 # Prevent flicker on page load
 st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)

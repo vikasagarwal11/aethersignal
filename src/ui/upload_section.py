@@ -34,20 +34,20 @@ def render_upload_section():
     )
 
     uploaded_files = st.file_uploader(
-        "Drop any safety data format: FAERS, Argus, Veeva, CSV, Excel, text, ZIP or PDF",
-        type=["csv", "xlsx", "xls", "txt", "zip", "pdf"],
+        "Drop any safety data format: FAERS, E2B XML, Argus, Veeva, CSV, Excel, text, ZIP or PDF",
+        type=["csv", "xlsx", "xls", "txt", "zip", "pdf", "xml"],
         accept_multiple_files=True,
         help=(
             "**Flexible format support for multi-vendor data:**\n\n"
             "✅ **Accepted formats:**\n"
             "- FAERS ASCII files (DEMO/DRUG/REAC/OUTC/THER/INDI/RPSR)\n"
+            "- **E2B(R3) XML files** (Argus exports, EudraVigilance, VigiBase)\n"
             "- Argus/Veeva exports (CSV/Excel)\n"
             "- Custom CSV/Excel files (any column names)\n"
             "- PDF files with tables\n"
             "- ZIP archives containing multiple files\n\n"
             "**Column mapping:** Auto-detected, with manual override available if needed.\n"
             "No standard format required - we adapt to your data structure.\n\n"
-            "⚠️ XML format is NOT supported - use ASCII (.txt) files instead.\n"
             "📦 Large files (>200MB) are supported."
         ),
     )
@@ -918,6 +918,32 @@ def render_upload_section():
                     )
                 
                 st.session_state.normalized_data = normalized
+                st.session_state.data = normalized  # Also set data for compatibility
+                
+                # Store data in database if user is authenticated
+                try:
+                    from src.auth.auth import is_authenticated, get_current_user
+                    from src.pv_storage import store_pv_data
+                    
+                    if is_authenticated() and normalized is not None and not normalized.empty:
+                        user = get_current_user()
+                        if user:
+                            user_id = user.get('user_id')
+                            organization = user.get('organization', '')
+                            source = 'FAERS'  # Default, can be enhanced to detect source from file
+                            
+                            with st.spinner("💾 Storing data in database..."):
+                                result = store_pv_data(normalized, user_id, organization, source)
+                                if result.get("success"):
+                                    inserted = result.get('inserted', 0)
+                                    st.success(f"✅ Data stored in database! {inserted:,} cases saved.")
+                                else:
+                                    # Continue without database if it fails
+                                    st.info("ℹ️ Data loaded in session. Database storage unavailable.")
+                except Exception as e:
+                    # Continue without database storage if it fails
+                    pass
+                
                 # Store file info in session state for later display (survives reruns)
                 if uploaded_files:
                     st.session_state.uploaded_file_size = sum(f.size for f in uploaded_files)
@@ -1094,38 +1120,117 @@ def render_upload_section():
                         and "drug_name" in normalized.columns
                         and "reaction" in normalized.columns
                     )
-                    # Drug name normalization button
-                    if "drug_name" in normalized.columns and len(normalized) > 0:
+                    # Data quality tools section
+                    if len(normalized) > 0:
                         st.markdown("---")
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            st.markdown("**🔧 Data Quality Tools**")
-                            st.caption("Normalize drug names to improve matching accuracy")
-                        with col2:
-                            if st.button("✨ Normalize Drug Names", key="normalize_drugs_btn", use_container_width=True):
-                                try:
-                                    from src.drug_name_normalization import normalize_drug_column, group_similar_drugs
-                                    
-                                    with st.spinner("Normalizing drug names..."):
-                                        # Normalize drug names
-                                        normalized_normalized = normalize_drug_column(normalized.copy(), drug_column='drug_name')
+                        st.markdown("**🔧 Data Quality Tools**")
+                        
+                        # Check for multiple sources
+                        has_multiple_sources = 'source' in normalized.columns and normalized['source'].nunique() > 1
+                        
+                        tool_cols = st.columns(2)
+                        
+                        with tool_cols[0]:
+                            if "drug_name" in normalized.columns:
+                                if st.button("✨ Normalize Drug Names", key="normalize_drugs_btn", use_container_width=True):
+                                    try:
+                                        from src.drug_name_normalization import normalize_drug_column, group_similar_drugs
                                         
-                                        # Group similar drugs
-                                        normalized_grouped = group_similar_drugs(normalized_normalized, drug_column='drug_name', threshold=0.85)
+                                        with st.spinner("Normalizing drug names..."):
+                                            # Normalize drug names
+                                            normalized_normalized = normalize_drug_column(normalized.copy(), drug_column='drug_name')
+                                            
+                                            # Group similar drugs
+                                            normalized_grouped = group_similar_drugs(normalized_normalized, drug_column='drug_name', threshold=0.85)
+                                            
+                                            # Update session state
+                                            st.session_state.normalized_data = normalized_grouped
+                                            st.session_state.data = normalized_grouped
+                                            
+                                            # Show results
+                                            original_unique = normalized['drug_name'].nunique()
+                                            new_unique = normalized_grouped['drug_name_normalized'].nunique() if 'drug_name_normalized' in normalized_grouped.columns else normalized_grouped['drug_name'].nunique()
+                                            
+                                            st.success(f"✅ Drug names normalized! Reduced from {original_unique} to {new_unique} unique drug names.")
+                                            st.info("💡 Similar drug names have been grouped together (e.g., 'TYLENOL' → 'Acetaminophen', 'aspirin HCL' → 'Aspirin')")
+                                            st.rerun()
+                                    except Exception as e:
+                                        st.error(f"❌ Error normalizing drug names: {str(e)}")
+                        
+                        with tool_cols[1]:
+                            if has_multiple_sources:
+                                if st.button("🔍 Detect Cross-Source Duplicates", key="dedup_btn", use_container_width=True):
+                                    try:
+                                        from src.cross_source_deduplication import detect_cross_source_duplicates, get_deduplication_report
                                         
-                                        # Update session state
-                                        st.session_state.normalized_data = normalized_grouped
-                                        st.session_state.data = normalized_grouped
-                                        
-                                        # Show results
-                                        original_unique = normalized['drug_name'].nunique()
-                                        new_unique = normalized_grouped['drug_name_normalized'].nunique() if 'drug_name_normalized' in normalized_grouped.columns else normalized_grouped['drug_name'].nunique()
-                                        
-                                        st.success(f"✅ Drug names normalized! Reduced from {original_unique} to {new_unique} unique drug names.")
-                                        st.info("💡 Similar drug names have been grouped together (e.g., 'TYLENOL' → 'Acetaminophen', 'aspirin HCL' → 'Aspirin')")
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Error normalizing drug names: {str(e)}")
+                                        with st.spinner("Detecting duplicates across sources..."):
+                                            # Detect duplicates
+                                            dedup_result = detect_cross_source_duplicates(
+                                                normalized,
+                                                source_column='source',
+                                                method='hybrid',
+                                                similarity_threshold=0.85,
+                                                use_ml=True,
+                                                use_quantum=True
+                                            )
+                                            
+                                            # Generate report
+                                            report = get_deduplication_report(
+                                                normalized,
+                                                dedup_result.get('duplicate_groups', []),
+                                                source_column='source'
+                                            )
+                                            
+                                            # Display results
+                                            st.success(f"✅ Duplicate detection complete!")
+                                            st.markdown("**📊 Deduplication Results:**")
+                                            
+                                            col1, col2, col3 = st.columns(3)
+                                            with col1:
+                                                st.metric("Total Cases", f"{dedup_result['total_cases']:,}")
+                                            with col2:
+                                                st.metric("Unique Cases", f"{dedup_result['unique_cases']:,}")
+                                            with col3:
+                                                st.metric("Duplicates", f"{dedup_result['duplicate_cases']:,}")
+                                            
+                                            if dedup_result['cross_source_duplicates'] > 0:
+                                                st.info(f"🔗 Found {dedup_result['cross_source_duplicates']} duplicate groups spanning multiple sources")
+                                            
+                                            # Show breakdown
+                                            if report.get('source_breakdown'):
+                                                st.markdown("**Source Breakdown:**")
+                                                for source, count in report['source_breakdown'].items():
+                                                    st.caption(f"- {source}: {count} duplicate groups")
+                                            
+                                            # Store in session state for potential removal
+                                            st.session_state.dedup_result = dedup_result
+                                            st.session_state.dedup_report = report
+                                            
+                                            # Offer to remove duplicates
+                                            if dedup_result['duplicate_cases'] > 0:
+                                                st.markdown("---")
+                                                if st.button("🗑️ Remove Duplicates", key="remove_dups_btn"):
+                                                    from src.cross_source_deduplication import remove_duplicates
+                                                    
+                                                    with st.spinner("Removing duplicates..."):
+                                                        cleaned_df = remove_duplicates(
+                                                            normalized,
+                                                            dedup_result.get('duplicate_groups', []),
+                                                            keep_strategy='first'
+                                                        )
+                                                        
+                                                        # Update session state
+                                                        st.session_state.normalized_data = cleaned_df
+                                                        st.session_state.data = cleaned_df
+                                                        
+                                                        st.success(f"✅ Removed {dedup_result['duplicate_cases']} duplicate cases. Dataset now has {len(cleaned_df):,} rows.")
+                                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"❌ Error detecting duplicates: {str(e)}")
+                                        import traceback
+                                        st.code(traceback.format_exc())
+                            else:
+                                st.caption("💡 Upload data from multiple sources (FAERS, E2B, etc.) to enable cross-source deduplication")
                     
                     st.caption(
                         "Source: FAERS‑style PV table detected"

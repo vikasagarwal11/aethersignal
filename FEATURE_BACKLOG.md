@@ -3,6 +3,12 @@
 **Last Updated:** January 2025  
 **Purpose:** Comprehensive list of all unimplemented features from competitive analysis and roadmap
 
+**Recent Updates:**
+- ✅ Added Enhanced NLP Features (comparison intent, trend intent, advanced severity detection)
+- ✅ Added AI-Enhanced Features (literature, narrative analysis, causal reasoning, MedDRA)
+- ✅ Added Multi-Source Ingestion Strategy features (E2B import, Argus support, EudraVigilance, VigiBase, OMOP CDM)
+- 📋 See `docs/MULTI_SOURCE_INGESTION_STRATEGY.md` for complete multi-source roadmap
+
 ---
 
 ## ✅ Recently Completed (Phase 1 - January 2025)
@@ -14,6 +20,13 @@
 5. ✅ **Enhanced PDF Executive Report** - Executive summary with key metrics
 6. ✅ **Quantum-Inspired Anomaly Detection** (#23) - Fully implemented in Trends tab
 7. ✅ **Quantum-Inspired Clustering** (#22) - Fully implemented in Signals tab
+8. ✅ **Enhanced NLP Features** (January 2025) - Comparison intent, Trend intent, Advanced severity detection
+9. ✅ **AI-Enhanced Features** (January 2025) - Enhanced literature integration, Narrative analysis, Causal reasoning, Enhanced MedDRA mapping
+10. ✅ **Multi-Model LLM Support** (January 2025) - Unified interface for OpenAI, Claude, Grok, Hugging Face (BioGPT)
+11. ✅ **E2B(R3) XML Import** (#35) - January 2025 - Parse E2B XML, extract ICSR data, map to AetherSignal schema
+12. ✅ **Smart Search / Conversational Queries** (January 2025) - Auto-correction, 3-tier fallback, short answers with provenance
+13. ✅ **Enhanced Cross-Source Deduplication** (#37) - January 2025 - Multi-method duplicate detection across sources (exact, fuzzy, ML, quantum-inspired)
+14. ✅ **Multi-Tenant User Account Management** (January 2025) - Complete authentication system, user registration/login, multi-tenant data isolation with Row-Level Security, data persistence in Supabase
 
 ---
 
@@ -99,6 +112,227 @@
 
 ### Data Ingestion & Mapping
 
+#### 35. E2B(R3) XML Import ⭐ **HIGH PRIORITY** (Multi-Source Strategy)
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** HIGH (unlocks Argus/EudraVigilance support)
+- **Description:** Import E2B(R3) XML files from Argus exports, EudraVigilance, and other regulatory sources
+- **Requirements:**
+  - Parse E2B(R3) XML structure
+  - Extract ICSR data (drugs, reactions, demographics, dates)
+  - Map to standard AetherSignal schema
+  - Handle multiple ICSRs per file
+  - Support both full E2B and summary formats
+  - XEVMPD ID extraction for deduplication
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 3-4 days
+- **Dependencies:** `lxml` or `xml.etree.ElementTree`
+- **Files to create/modify:**
+  - `src/e2b_import.py` (new)
+  - `src/mapping_templates.py` (enhance existing)
+  - `src/ui/upload_section.py` (add E2B import option)
+- **Market Impact:** **CRITICAL** - Enables Argus export support, unlocks enterprise customers migrating from Oracle
+- **Strategic Alignment:** Phase 1 of multi-source ingestion strategy (see `docs/MULTI_SOURCE_INGESTION_STRATEGY.md`)
+
+#### 36. Argus Interchange Format Support ⭐ **HIGH PRIORITY** (Multi-Source Strategy)
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** HIGH (customer acquisition - removes migration barrier)
+- **Description:** Parse Argus export files (CSV/SQL dumps) and Argus Mart views
+- **Requirements:**
+  - Parse Argus export files (CSV/SQL dumps)
+  - Handle Argus Mart views
+  - Map Argus-specific fields to standard schema
+  - Support both ICSR-level and aggregated exports
+  - Argus Interchange format support
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 3-4 days
+- **Files to create/modify:**
+  - `src/argus_loader.py` (new) or extend `src/faers_loader.py`
+  - `src/pv_schema.py` (add Argus field mappings)
+  - `src/ui/upload_section.py` (add Argus format detection)
+- **Market Impact:** **CRITICAL** - Removes biggest barrier to switching from Oracle Argus, enables mass migration
+- **Strategic Alignment:** Phase 1 of multi-source ingestion strategy
+
+#### 37. Enhanced Cross-Source Deduplication ⭐ **HIGH PRIORITY** (Multi-Source Strategy)
+- **Status:** ✅ **IMPLEMENTED** (January 2025)
+- **Priority:** HIGH (data quality for multi-source)
+- **Description:** Cross-source deduplication (FAERS + Argus + EudraVigilance) using fuzzy matching and ML
+- **Requirements:**
+  - ✅ Cross-source duplicate detection
+  - ✅ Fuzzy matching on case identifiers
+  - ✅ Age/sex/event-based matching
+  - ✅ ML-based duplicate detection (RecordLinkage)
+  - ✅ Quantum-inspired duplicate detection (enhanced)
+- **Implementation:**
+  - `src/cross_source_deduplication.py` - Main deduplication module with hybrid approach
+  - `src/app_helpers.py` - Source tracking integration
+  - `src/ui/upload_section.py` - UI for deduplication detection and removal
+  - `src/faers_loader.py` - Source tracking for FAERS data
+- **Dependencies:** `recordlinkage>=0.16.0` (optional - graceful fallback if not installed)
+- **Market Impact:** HIGH - Essential for multi-source harmonization, data quality
+- **Strategic Alignment:** Phase 1 of multi-source ingestion strategy
+
+#### 38. EudraVigilance (EMA) API Integration ⭐ **MEDIUM-HIGH PRIORITY** (Multi-Source Strategy)
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM-HIGH (global coverage)
+- **Description:** Integrate with EMA EVDAS API for EudraVigilance data access
+- **Requirements:**
+  - EVDAS API client
+  - SOAP/XML parsing
+  - XEVMPD ID extraction
+  - ISO 11238 substance ID mapping
+  - MedDRA/ATC code mapping
+  - Subscription management
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 1-2 weeks
+- **Dependencies:** EVDAS API access (customer subscription)
+- **Files to create/modify:**
+  - `src/eudravigilance_client.py` (new)
+  - `src/e2b_import.py` (reuse for E2B parsing)
+- **Market Impact:** HIGH - Enables EU market coverage, cross-jurisdiction signal detection
+- **Strategic Alignment:** Phase 2 of multi-source ingestion strategy
+
+#### 39. VigiBase (WHO) Integration ⭐ **MEDIUM-HIGH PRIORITY** (Multi-Source Strategy)
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM-HIGH (global gold standard)
+- **Description:** Integrate with WHO UMC API for VigiBase data access
+- **Requirements:**
+  - UMC API client
+  - WHODrug Global code mapping
+  - Subscription management
+  - Monthly data pulls
+  - VigiLyze integration (optional)
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 1-2 weeks
+- **Dependencies:** WHO UMC membership (customer subscription)
+- **Files to create/modify:**
+  - `src/vigibase_client.py` (new)
+  - `src/drug_name_normalization.py` (add WHODrug mapping)
+- **Market Impact:** HIGH - Benchmarking gold standard, 7-22 months earlier signals vs. labels
+- **Strategic Alignment:** Phase 2 of multi-source ingestion strategy
+
+#### 40. OMOP CDM Harmonization ⭐ **MEDIUM PRIORITY** (Multi-Source Strategy)
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM (unified data model)
+- **Description:** Convert all sources to OHDSI OMOP CDM format for unified analytics
+- **Requirements:**
+  - OHDSI OMOP CDM schema conversion
+  - Unified drug mapping (RxNorm, ATC)
+  - Unified reaction mapping (MedDRA)
+  - Star schema for analytics
+  - Drug mapping: RxNorm, ATC
+  - Reaction mapping: MedDRA
+  - Date standardization
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 2-3 weeks
+- **Dependencies:** OHDSI tools (if available)
+- **Files to create/modify:**
+  - `src/omop_cdm_converter.py` (new)
+  - `src/drug_name_normalization.py` (add RxNorm/ATC mapping)
+- **Market Impact:** MEDIUM-HIGH - Enables advanced analytics, RWE integration
+- **Strategic Alignment:** Phase 3 of multi-source ingestion strategy
+
+#### 41. Automated ETL Pipeline (Airflow) ⭐ **MEDIUM PRIORITY** (Multi-Source Strategy)
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM (operational efficiency)
+- **Description:** Apache Airflow orchestration for scheduled data pulls and incremental updates
+- **Requirements:**
+  - Apache Airflow orchestration
+  - Scheduled data pulls (FAERS quarterly, EudraVigilance weekly, etc.)
+  - Incremental updates
+  - Error handling and retries
+  - Data quality checks
+  - Webhook support for real-time ingestion
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 2-3 weeks
+- **Dependencies:** `apache-airflow>=2.7.0` (optional, can use cloud services)
+- **Files to create/modify:**
+  - `etl/` (new directory)
+  - `etl/dags/faers_dag.py` (new)
+  - `etl/dags/eudravigilance_dag.py` (new)
+  - `etl/dags/vigibase_dag.py` (new)
+- **Market Impact:** MEDIUM-HIGH - Operational efficiency, automated data freshness
+- **Strategic Alignment:** Phase 3 of multi-source ingestion strategy
+
+#### 42. VAERS (Vaccine) Data Integration
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM (vaccine-specific)
+- **Description:** VAERS-specific ETL and vaccine code mapping
+- **Requirements:**
+  - VAERS CSV/ASCII parsing
+  - Vaccine code mapping
+  - Merge with FAERS for unified view
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 2-3 days
+- **Files to create/modify:**
+  - `src/vaers_loader.py` (new) or extend `src/faers_loader.py`
+- **Market Impact:** MEDIUM - Quick add-on for biotech/vax focus
+- **Strategic Alignment:** Phase 4 of multi-source ingestion strategy
+
+#### 43. PMDA JADER (Japan) Integration
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM (Asia coverage)
+- **Description:** JADER CSV parsing and JART code mapping
+- **Requirements:**
+  - JADER CSV parsing
+  - JART code mapping to MedDRA
+  - ATC/MedDRA conversion
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 3-4 days
+- **Dependencies:** RDKit (for chem mapping, optional)
+- **Files to create/modify:**
+  - `src/jader_loader.py` (new)
+- **Market Impact:** MEDIUM - Low volume but high-value for J-market entry
+- **Strategic Alignment:** Phase 4 of multi-source ingestion strategy
+
+#### 44. Clinical Trial Safety Data Integration
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** MEDIUM (pre-market signals)
+- **Description:** Import clinical trial SAE line listings and exposure data
+- **Requirements:**
+  - SAE line listing parser
+  - Exposure-adjusted incidence rates
+  - Lab abnormalities integration
+  - Narrative extraction
+  - Oracle Clinical / SAS export support
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 1 week
+- **Files to create/modify:**
+  - `src/clinical_trial_loader.py` (new)
+- **Market Impact:** MEDIUM - Pre-market signals, ~10% of total data but high-value
+- **Strategic Alignment:** Additional source (not in core roadmap)
+
+#### 45. Medical Information Query Integration
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** LOW-MEDIUM (signal confirmation)
+- **Description:** Import medical information queries, product complaints, off-label usage patterns
+- **Requirements:**
+  - Medical information query parser
+  - Product complaint integration
+  - Off-label usage pattern detection
+  - Consumer question analysis
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 3-4 days
+- **Files to create/modify:**
+  - `src/medical_info_loader.py` (new)
+- **Market Impact:** LOW-MEDIUM - Signal confirmation source, often overlooked
+- **Strategic Alignment:** Additional source (not in core roadmap)
+
+#### 46. Product Quality Complaint Integration
+- **Status:** ❌ **NOT IMPLEMENTED**
+- **Priority:** LOW-MEDIUM (quality signals)
+- **Description:** Import product quality complaints (device malfunctions, packaging, batch/lot analysis)
+- **Requirements:**
+  - Quality complaint parser
+  - Device malfunction tracking
+  - Batch/lot analysis
+  - Temperature excursion tracking
+- **Can Implement:** ✅ Yes (fully implementable)
+- **Estimated Time:** 2-3 days
+- **Files to create/modify:**
+  - `src/quality_complaint_loader.py` (new)
+- **Market Impact:** LOW-MEDIUM - Important for product-quality-related signals
+- **Strategic Alignment:** Additional source (not in core roadmap)
+
 #### 5. Reusable Mapping Templates (Persistent) ❌
 - **Status:** ❌ **NOT IMPLEMENTED**
 - **Priority:** MEDIUM
@@ -141,6 +375,8 @@
     - Argus exports
     - Vault Safety format
     - Health Authority (HA) formats
+    - EudraVigilance formats
+    - VigiBase formats
   - Format detection logic
   - Format-specific loaders
 - **Can Implement:** ✅ Yes (fully implementable)
@@ -149,6 +385,7 @@
   - `src/schema_packs.py` (new)
   - `src/pv_schema.py` (add format detection)
 - **Market Impact:** Faster time-to-value for enterprise formats
+- **Note:** Now includes multi-source formats (EudraVigilance, VigiBase) from strategic roadmap
 
 ### Advanced Analytics
 
@@ -177,12 +414,15 @@
   - Interaction effect analysis
   - Combination risk metrics
   - Compare single vs. combination signals
+  - Support for comparison intent queries ("compare drug X vs drug Y")
 - **Can Implement:** ✅ Yes (fully implementable)
 - **Estimated Time:** 3-4 days
 - **Files to create/modify:**
   - `src/drug_interactions.py` (new)
   - `src/ui/results_display.py` (add interaction explorer)
+  - `src/ui/results_display.py` (handle comparison intent from NLP parser)
 - **Market Impact:** Unique blue ocean feature
+- **Note:** NLP parser now detects comparison intent (see #35 Enhanced NLP Features)
 
 #### 10. Full Cohort Comparison Views ❌
 - **Status:** ❌ **NOT IMPLEMENTED**
@@ -211,12 +451,15 @@
   - Comparison logic
   - Side-by-side comparison views
   - Statistical comparison metrics
+  - Support for trend intent queries ("is X increasing?", "show trends")
 - **Can Implement:** ✅ Yes (fully implementable)
 - **Estimated Time:** 2-3 days
 - **Files to create/modify:**
   - `src/time_comparison.py` (new)
   - `src/ui/results_display.py` (add comparison UI)
+  - `src/ui/results_display.py` (handle trend intent from NLP parser)
 - **Market Impact:** Enables deeper trend analysis
+- **Note:** NLP parser now detects trend intent (see #35 Enhanced NLP Features)
 
 ---
 
@@ -379,15 +622,16 @@
 | **Medium-Priority** | 0 | 0 | 8 | 8 |
 | **Lower-Priority** | 0 | 0 | 5 | 5 |
 | **Enterprise** | 0 | 0 | 3 | 3 |
-| **Strategic High-Impact** | 0 | 0 | 14 | 14 |
-| **TOTAL** | **5** | **0** | **33** | **38** |
+| **Strategic High-Impact** | 4 | 0 | 10 | 14 |
+| **Multi-Source Ingestion** | 0 | 0 | 8 | 8 |
+| **TOTAL** | **10** | **0** | **36** | **46** |
 
 ### By Implementation Type
 
-- ✅ **Fully Implementable:** 28 features (74%)
-- ⚠️ **Partially Implementable:** 5 features (13%) - need external services
-- ❌ **Cannot Implement:** 1 feature (3%) - requires infrastructure
-- ✅ **Completed:** 5 features (13%) - Phase 1
+- ✅ **Fully Implementable:** 32 features (89%)
+- ⚠️ **Partially Implementable:** 4 features (11%) - need external services/subscriptions
+- ❌ **Cannot Implement:** 0 features (0%)
+- ✅ **Completed:** 10 features (22%) - Phase 1 + Enhanced NLP + AI Features
 
 ---
 
@@ -441,6 +685,11 @@
 31. Patient-Centric Features (Feature #31)
 32. Quantum Benchmarking Framework (Feature #32)
 33. Regulatory Engagement Strategy (Feature #33 - strategic)
+34. VAERS Integration (Feature #42) - Vaccine-specific
+35. PMDA JADER Integration (Feature #43) - Asia coverage
+36. Clinical Trial Safety Data Integration (Feature #44)
+37. Medical Information Query Integration (Feature #45)
+38. Product Quality Complaint Integration (Feature #46)
 
 ---
 

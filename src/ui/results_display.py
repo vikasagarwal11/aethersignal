@@ -242,6 +242,27 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     summary = cached_get_summary_stats(filtered_df, normalized_df)
     _log_perf_event("summary_stats", time.perf_counter() - start_time, {"matches": len(filtered_df)})
 
+    # Lightweight conversational-style answer (rule-based, no LLM required)
+    try:
+        drug_txt = filters.get("drug") if isinstance(filters.get("drug"), str) else None
+        react_txt = filters.get("reaction") if isinstance(filters.get("reaction"), str) else None
+        short_bits = []
+        # Add provenance: "Based on X matching cases in your uploaded data..."
+        short_bits.append(f"Based on {summary['matching_cases']:,} matching cases in your uploaded data (out of {summary['total_cases']:,} total, {summary['percentage']:.2f}%).")
+        if drug_txt:
+            short_bits.append(f"Drug: {drug_txt}.")
+        if react_txt:
+            short_bits.append(f"Reaction: {react_txt}.")
+        if summary.get("serious_count") is not None:
+            short_bits.append(f"Serious cases: {summary['serious_count']:,} ({summary.get('serious_percentage', 0):.1f}%).")
+        short_answer = " ".join(short_bits)
+        st.markdown(
+            f"<div class='block-card' style='margin-bottom:12px;'><strong>💬 Answer:</strong> {short_answer}</div>",
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        pass
+
     # Audit logging for queries (after summary is available)
     try:
         from src.audit_trail import log_audit_event

@@ -12,6 +12,7 @@ pennylane==0.38.0
 pdfplumber==0.11.4
 requests==2.31.0
 supabase==2.0.0
+python-dotenv>=1.0.0
 transformers==4.35.0
 # torch is optional - ML features will work without it (rule-based fallback)
 # Uncomment below for local development with ML features:
@@ -24,3 +25,5 @@ openai>=1.0.0
 anthropic>=0.18.0
 huggingface_hub>=0.20.0  # For BioGPT via Hugging Face Inference API
 # groq>=0.4.0  # Uncomment if using Groq API (for fast inference, not BioGPT)
+# Enhanced cross-source deduplication (optional - ML-based duplicate detection)
+recordlinkage>=0.16.0

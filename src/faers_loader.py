@@ -347,6 +347,10 @@ def load_faers_folder(folder_path: str, progress_callback=None) -> Optional[pd.D
     
     result = _trim_to_essential_columns(combined_df, key_column)
     
+    # Add source tracking
+    if 'source' not in result.columns:
+        result['source'] = 'FAERS'
+    
     # Report progress: Complete
     if progress_callback:
         progress_callback("Processing complete!", 100, files_processed, total_files)

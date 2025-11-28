@@ -132,11 +132,26 @@ def _detect_concepts(query_lower: str, filters: Dict) -> None:
             filters['age_max'] = 49
     
     # Severity concepts (enhance existing seriousness detection)
-    if re.search(r'\b(life.?threatening|fatal|death|mortality|lethal)\b', query_lower):
+    if re.search(r'\b(life.?threatening|fatal|death|mortality|lethal|deadly)\b', query_lower):
         filters['seriousness'] = True
+        # Store severity level for potential future use
+        if 'severity_level' not in filters:
+            filters['severity_level'] = 'life_threatening'
     
-    if re.search(r'\b(hospitalization|hospitalized|hospital\s+admission)\b', query_lower):
+    if re.search(r'\b(hospitalization|hospitalized|hospital\s+admission|inpatient|admitted)\b', query_lower):
         filters['seriousness'] = True
+        if 'severity_level' not in filters:
+            filters['severity_level'] = 'hospitalization'
+    
+    if re.search(r'\b(disability|disabling|permanent\s+disability)\b', query_lower):
+        filters['seriousness'] = True
+        if 'severity_level' not in filters:
+            filters['severity_level'] = 'disability'
+    
+    if re.search(r'\b(congenital\s+anomaly|birth\s+defect)\b', query_lower):
+        filters['seriousness'] = True
+        if 'severity_level' not in filters:
+            filters['severity_level'] = 'congenital_anomaly'
     
     # "New" or "emerging" - typically means recent
     if re.search(r'\b(new|emerging|novel|recent\s+signals?)\b', query_lower):
@@ -144,6 +159,49 @@ def _detect_concepts(query_lower: str, filters: Dict) -> None:
             # Default to last 18 months for "new" signals
             eighteen_months_ago = datetime.now() - timedelta(days=545)
             filters['date_from'] = eighteen_months_ago.strftime('%Y-%m-%d')
+    
+    # Comparison intent detection
+    if re.search(r'\b(compare|comparison|versus|vs\.?|vs\s+|compared\s+to|compared\s+with|difference\s+between)\b', query_lower):
+        filters['intent'] = 'comparison'
+        # Extract drugs/reactions for comparison
+        # Pattern: "compare drug X vs drug Y" or "compare X and Y"
+        compare_pattern = re.search(
+            r'\b(?:compare|comparison|difference\s+between)\s+(?:drug\s+)?([a-z0-9\s\-]+?)\s+(?:vs\.?|vs\s+|versus|and|with)\s+(?:drug\s+)?([a-z0-9\s\-]+?)(?:\s+for|\s+with|\s+and|\.|,|$)',
+            query_lower
+        )
+        if compare_pattern:
+            drug1 = compare_pattern.group(1).strip()
+            drug2 = compare_pattern.group(2).strip()
+            if len(drug1) > 2 and len(drug2) > 2:
+                filters['comparison_drugs'] = [drug1, drug2]
+    
+    # Trend intent detection
+    if re.search(r'\b(is|are|has|have)\s+([a-z0-9\s\-]+?)\s+(increasing|decreasing|rising|falling|trending|changing|getting\s+worse|getting\s+better)\b', query_lower):
+        filters['intent'] = 'trend'
+        # Extract what is trending
+        trend_match = re.search(
+            r'\b(is|are|has|have)\s+([a-z0-9\s\-]+?)\s+(increasing|decreasing|rising|falling|trending|changing|getting\s+worse|getting\s+better)\b',
+            query_lower
+        )
+        if trend_match:
+            trend_subject = trend_match.group(2).strip()
+            trend_direction = trend_match.group(3).strip()
+            filters['trend_subject'] = trend_subject
+            filters['trend_direction'] = trend_direction
+    
+    # Alternative trend patterns
+    if re.search(r'\b(trend|trending|trends?)\s+(?:of|for|in)\s+([a-z0-9\s\-]+?)(?:\s+is|\s+are|\.|,|$)', query_lower):
+        filters['intent'] = 'trend'
+        trend_match = re.search(
+            r'\b(trend|trending|trends?)\s+(?:of|for|in)\s+([a-z0-9\s\-]+?)(?:\s+is|\s+are|\.|,|$)',
+            query_lower
+        )
+        if trend_match:
+            filters['trend_subject'] = trend_match.group(2).strip()
+    
+    # "How many" or "what is the trend" queries
+    if re.search(r'\b(how\s+many|what\s+is\s+the\s+trend|show\s+trends?|trend\s+analysis)\b', query_lower):
+        filters['intent'] = 'trend'
 
 
 def _detect_term_in_dataset(term: str, normalized_df: Optional[pd.DataFrame]) -> Tuple[Optional[str], bool, bool]:

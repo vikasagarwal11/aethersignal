@@ -5,13 +5,18 @@ saved queries, and recent history in a clean layout.
 """
 
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 import re
 
 import streamlit as st
 
 from src import nl_query_parser
 from src import watchlist_tab
+from src.query_correction import (
+    suggest_query_corrections,
+    get_corrected_query,
+    find_top_candidates,
+)
 
 
 def _build_dynamic_starter_questions(
@@ -169,30 +174,50 @@ def _build_dynamic_starter_questions(
 
 
 def render_nl_query_tab(normalized_df):
-    """Step 2 – natural‑language query workbench."""
+    """Step 2 – natural-language query workbench."""
 
     st.markdown("<div class='block-card'>", unsafe_allow_html=True)
+    
+    # Compact header
     st.markdown("### Ask a question")
     st.caption(
-        "Type a question in plain English, or start from a suggested tile or a saved query. "
-        "Step 2 always uses the dataset you loaded in Step 1."
+        "Type a question in plain English, or start from a suggested tile."
+    )
+
+    smart_search = st.checkbox(
+        "✨ Smart search (typo correction + suggestions)",
+        value=False,  # OFF by default to preserve existing behavior
+        help="Correct likely typos for drugs/reactions and suggest alternatives.",
     )
 
     starter_questions, top_drugs, top_reactions, all_drugs, all_reactions = _build_dynamic_starter_questions(
         normalized_df
     )
 
-    left_col, right_col = st.columns([1.1, 2])
+    # Optimized layout: Main query box takes more prominence
+    main_col, side_col = st.columns([2.2, 1])
 
-    # ---------------- Right: main query box ----------------
-    with right_col:
+    # ---------------- Main: query box (more prominent) ----------------
+    with main_col:
+        # Styled title for the query field
+        st.markdown("""
+        <div style='margin-bottom: 0.5rem;'>
+            <label style='font-size: 0.9rem; font-weight: 600; color: #1e293b; display: block; margin-bottom: 0.4rem;'>
+                Enter safety question
+            </label>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Wrapped text area with custom styling
+        st.markdown('<div class="query-textarea-wrapper">', unsafe_allow_html=True)
         query_text = st.text_area(
-            "Enter safety question…",
+            "",  # Empty label since we have custom title above
             value=st.session_state.get(
                 "query_text", st.session_state.get("last_query_text", "")
             ),
-            height=160,
+            height=100,  # Reduced from 160 to save space
             key="query_input",
+            label_visibility="collapsed",  # Hide default label
             placeholder=(
                 "Ask anything about your safety data, for example:\n"
                 "• Show serious cases with drug aspirin and reaction gastrointestinal bleeding since 2021\n"
@@ -205,47 +230,87 @@ def render_nl_query_tab(normalized_df):
                 "Multiple reactions default to OR (matches any). Use 'and' explicitly for AND logic."
             ),
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
+        # Try to load data from database if not in session state
+        if st.session_state.get("normalized_data") is None:
+            try:
+                from src.auth.auth import is_authenticated, get_current_user
+                from src.pv_storage import load_pv_data
+                
+                if is_authenticated():
+                    user = get_current_user()
+                    if user:
+                        user_id = user.get('user_id')
+                        organization = user.get('organization', '')
+                        
+                        # Load data from database
+                        df_from_db = load_pv_data(user_id, organization)
+                        if df_from_db is not None and not df_from_db.empty:
+                            st.session_state.normalized_data = df_from_db
+                            st.session_state.data = df_from_db
+                            st.info("📊 Loaded your data from database.")
+            except Exception:
+                # Continue without database if it fails
+                pass
+        
         run_query_enabled = (
             st.session_state.data is not None
             and st.session_state.normalized_data is not None
         )
-        run_query = st.button(
-            "🚀 Run query",
-            type="primary",
-            use_container_width=True,
-            disabled=not run_query_enabled,
-            key="run_main_query",
-        )
+        
+        # Button row with AI checkbox inline
+        btn_col, ai_col = st.columns([2, 1])
+        with btn_col:
+            run_query = st.button(
+                "🚀 Run query",
+                type="primary",
+                use_container_width=True,
+                disabled=not run_query_enabled,
+                key="run_main_query",
+            )
+        with ai_col:
+            # AI checkbox moved inline to save vertical space
+            use_llm = st.checkbox(
+                "🤖 AI-enhanced",
+                value=st.session_state.get("use_llm", False),
+                key="use_llm_checkbox",
+                help=(
+                    "⚠️ Privacy Notice: When enabled, AI features include:\n"
+                    "• Enhanced query interpretation\n"
+                    "• Literature summarization & insights\n"
+                    "• Case narrative analysis\n"
+                    "• Causal reasoning for signals\n"
+                    "• Enhanced MedDRA mapping\n\n"
+                    "Your data remains private, but query text and case narratives may be sent to external AI services "
+                    "(OpenAI/Claude/Groq). Disable for full privacy."
+                )
+            )
+            st.session_state.use_llm = use_llm
 
         if not run_query_enabled and query_text:
             st.info("ℹ️ Upload and load data first to run queries.")
 
-        # AI/LLM opt-in checkbox (with privacy warning)
-        use_llm = st.checkbox(
-            "🤖 Enable AI-enhanced features (optional)",
-            value=st.session_state.get("use_llm", False),
-            key="use_llm_checkbox",
-            help=(
-                "⚠️ Privacy Notice: When enabled, AI features include:\n"
-                "• Enhanced query interpretation\n"
-                "• Literature summarization & insights\n"
-                "• Case narrative analysis\n"
-                "• Causal reasoning for signals\n"
-                "• Enhanced MedDRA mapping\n\n"
-                "Your data remains private, but query text and case narratives may be sent to external AI services "
-                "(OpenAI/Claude/Groq). Disable for full privacy."
-            )
-        )
-        st.session_state.use_llm = use_llm
-
         if run_query and query_text and run_query_enabled:
             with st.spinner("🔎 Interpreting your query…"):
+                working_query = query_text
+                applied_corrections: Optional[Dict[str, tuple]] = None
+
+                # Smart typo correction (auto-apply when confident)
+                if smart_search and normalized_df is not None:
+                    suggestions = suggest_query_corrections(working_query, normalized_df)
+                    if suggestions:
+                        corrected = get_corrected_query(working_query, suggestions)
+                        applied_corrections = suggestions
+                        working_query = corrected
+                        st.info(f"Did you mean: **{corrected}**")
+                        st.session_state.last_query_corrections = suggestions
+
                 # Use hybrid router (rule-based first, LLM fallback if enabled)
                 try:
                     from src.ai.hybrid_router import route_query
                     filters, method, confidence = route_query(
-                        query_text, 
+                        working_query, 
                         normalized_df, 
                         use_llm=use_llm,
                         llm_confidence_threshold=0.6
@@ -255,11 +320,27 @@ def render_nl_query_tab(normalized_df):
                     st.session_state.last_query_confidence = confidence
                 except ImportError:
                     # Fallback to direct parser if AI module not available
-                    filters = nl_query_parser.parse_query_to_filters(query_text, normalized_df)
+                    filters = nl_query_parser.parse_query_to_filters(working_query, normalized_df)
                     st.session_state.last_query_method = "rule_based"
                     st.session_state.last_query_confidence = 1.0
                 
-                is_valid, error_msg = nl_query_parser.validate_filters(filters)
+                is_valid, error_msg = nl_query_parser.validate_filters(filters, normalized_df)
+
+                # Keyword fallback if parsing failed
+                if smart_search and (not is_valid or not filters):
+                    drug_candidates = find_top_candidates(normalized_df, "drug_name")
+                    react_candidates = find_top_candidates(normalized_df, "reaction")
+                    st.warning(error_msg or "Could not understand the query. Showing top candidates.")
+                    fallback_filters = {}
+                    if drug_candidates:
+                        fallback_filters["drug"] = drug_candidates[0]
+                    if react_candidates:
+                        fallback_filters["reaction"] = react_candidates[0]
+                    if fallback_filters:
+                        filters = fallback_filters
+                        is_valid = True
+                        st.info(f"Applying fallback: {filters}")
+                
                 if not is_valid:
                     st.error(
                         error_msg
@@ -270,14 +351,15 @@ def render_nl_query_tab(normalized_df):
                     history = st.session_state.get("query_history", [])
                     history.append(
                         {
-                            "query_text": query_text,
+                            "query_text": working_query,
                             "timestamp": datetime.now().isoformat(),
                             "source": "nl",
+                            "corrected": bool(applied_corrections),
                         }
                     )
                     st.session_state.query_history = history[-10:]
 
-                    st.session_state.last_query_text = query_text
+                    st.session_state.last_query_text = working_query
                     st.session_state.last_filters = filters
                     st.session_state.last_query_source = "nl"
                     st.session_state.show_results = True
@@ -286,15 +368,16 @@ def render_nl_query_tab(normalized_df):
         if st.session_state.get("last_query_text"):
             st.markdown("---")
             st.caption(
-                f"🕒 Last query: *“{st.session_state.last_query_text}”* "
+                f"🕒 Last query: *'{st.session_state.last_query_text}'* "
                 f"(source: {st.session_state.get('last_query_source','nl')})"
             )
 
-    # ---------------- Left: starter tiles, saved queries, history ----------------
-    with left_col:
-        # Starter tiles
+    # ---------------- Side: starter tiles, saved queries, history (compact) ----------------
+    with side_col:
+        # Starter tiles (compact)
         st.markdown("#### ⚡ Starter questions")
         if starter_questions:
+            # Use smaller buttons in a more compact layout
             for idx, (title, query, icon) in enumerate(starter_questions):
                 if st.button(
                     f"{icon} {title}",
@@ -307,14 +390,15 @@ def render_nl_query_tab(normalized_df):
                     st.session_state.show_results = False
                     st.rerun()
         else:
-            st.caption("Upload and load data to see data‑driven suggestions.")
+            st.caption("Upload data to see suggestions.")
 
-        # Quick chips for top drugs / reactions
+        # Quick chips for top drugs / reactions (compact)
         if top_drugs or top_reactions:
             st.markdown("---")
         if top_drugs:
-            st.caption("💊 Top drugs")
-            for idx, drug in enumerate(top_drugs[:6]):
+            st.markdown("**💊 Top drugs**")
+            # Show fewer drugs to save space
+            for idx, drug in enumerate(top_drugs[:4]):
                 if st.button(
                     drug,
                     key=f"drug_chip_{idx}",
@@ -369,8 +453,9 @@ def render_nl_query_tab(normalized_df):
                             st.info("ℹ️ All selected drugs are already in your query")
         
         if top_reactions:
-            st.caption("⚠️ Top reactions")
-            for idx, reaction in enumerate(top_reactions[:6]):
+            st.markdown("**⚠️ Top reactions**")
+            # Show fewer reactions to save space
+            for idx, reaction in enumerate(top_reactions[:4]):
                 if st.button(
                     reaction,
                     key=f"reaction_chip_{idx}",
@@ -605,5 +690,3 @@ def render_query_interface(normalized_df):
 
     with advanced_tab:
         render_advanced_search_tab()
-
-

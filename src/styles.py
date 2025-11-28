@@ -697,6 +697,34 @@ div[data-testid="stMarkdownContainer"] div[style*="border-left: 3px solid"]:hove
     min-height: 140px;
 }
 
+/* Query textarea wrapper - makes the field stand out */
+.query-textarea-wrapper {
+    margin-bottom: 0.75rem;
+}
+
+.query-textarea-wrapper .stTextArea textarea {
+    background: #ffffff !important;
+    border: 2px solid #3b82f6 !important;
+    border-radius: 12px !important;
+    padding: 0.875rem 1rem !important;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15), inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+    font-size: 0.95rem !important;
+    line-height: 1.6 !important;
+    transition: all 0.2s ease !important;
+    min-height: 100px !important;
+}
+
+.query-textarea-wrapper .stTextArea textarea:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25), inset 0 1px 2px rgba(15, 23, 42, 0.05) !important;
+    outline: none !important;
+}
+
+.query-textarea-wrapper .stTextArea textarea::placeholder {
+    color: #94a3b8 !important;
+    opacity: 0.8 !important;
+}
+
 .step-label {
     font-size: 0.78rem;
     font-weight: 600;

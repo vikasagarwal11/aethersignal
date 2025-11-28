@@ -18,6 +18,13 @@ from src import pv_schema
 from src import signal_stats
 from src.utils import normalize_text
 
+# Try to import E2B import module
+try:
+    from src import e2b_import
+    E2B_AVAILABLE = True
+except ImportError:
+    E2B_AVAILABLE = False
+
 
 def initialize_session():
     """Initialize session state with default values."""
@@ -65,7 +72,64 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
         except Exception:
             pass
 
-    # 1) Try FAERS ZIP / ASCII detection via faers_loader
+    # 1) Try E2B XML files first (if available)
+    if E2B_AVAILABLE:
+        xml_files = [f for f in uploaded_files if f.name.lower().endswith(".xml")]
+        if xml_files:
+            for f in xml_files:
+                current_file += 1
+                if progress_callback:
+                    progress_callback(current_file, total_files, f.name, f.size)
+                
+                try:
+                    # Write UploadedFile to temporary file (E2B loader expects file path)
+                    _reset_file_pointer(f)
+                    temp_xml = None
+                    try:
+                        temp_xml = tempfile.NamedTemporaryFile(delete=False, suffix='.xml')
+                        temp_xml.write(f.getbuffer())
+                        temp_xml.close()
+                        
+                        # Detect if it's E2B format
+                        if e2b_import.detect_e2b_file(temp_xml.name):
+                            # Create progress callback wrapper
+                            def e2b_progress_wrapper(step_name, progress_percent):
+                                if progress_callback:
+                                    detailed_msg = f"{f.name}: {step_name}"
+                                    progress_callback(
+                                        current_file,
+                                        total_files,
+                                        detailed_msg,
+                                        f.size
+                                    )
+                            
+                            df = e2b_import.load_e2b_xml(temp_xml.name, progress_callback=e2b_progress_wrapper)
+                            
+                            if df is not None and not df.empty:
+                                frames.append(df)
+                                processed_files.add(id(f))
+                                st.success(f"✅ Successfully loaded E2B XML file: `{f.name}` ({len(df)} rows)")
+                                continue
+                        else:
+                            # Not E2B format, will try other parsers later
+                            pass
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "xml" in error_msg.lower() or "parse" in error_msg.lower():
+                            st.warning(f"⚠️ Could not parse XML file `{f.name}`. It may not be in E2B(R3) format.")
+                        else:
+                            st.error(f"❌ Error loading E2B XML `{f.name}`: {error_msg[:200]}")
+                    finally:
+                        if temp_xml and os.path.exists(temp_xml.name):
+                            try:
+                                os.unlink(temp_xml.name)
+                            except:
+                                pass
+                except Exception as e:
+                    st.warning(f"⚠️ Error processing XML file `{f.name}`: {str(e)[:200]}")
+                    pass  # Will fall back to other parsers
+
+    # 2) Try FAERS ZIP / ASCII detection via faers_loader
     faers_like_files = [f for f in uploaded_files if f.name.lower().endswith((".zip", ".txt"))]
     if faers_like_files:
         for f in faers_like_files:
@@ -83,16 +147,47 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
                             zip_contents = z.namelist()
                             xml_files = [fn for fn in zip_contents if fn.lower().endswith(".xml")]
                             if xml_files:
-                                # XML detected - provide specific error
+                                # XML detected - check if E2B format
+                                if E2B_AVAILABLE:
+                                    # Try to extract and load E2B XML from ZIP
+                                    try:
+                                        _reset_file_pointer(f)
+                                        with zipfile.ZipFile(f, "r") as z:
+                                            for xml_fn in xml_files[:5]:  # Limit to first 5 XML files
+                                                try:
+                                                    with z.open(xml_fn) as xml_file:
+                                                        temp_xml = tempfile.NamedTemporaryFile(delete=False, suffix='.xml')
+                                                        temp_xml.write(xml_file.read())
+                                                        temp_xml.close()
+                                                        
+                                                        if e2b_import.detect_e2b_file(temp_xml.name):
+                                                            df = e2b_import.load_e2b_xml(temp_xml.name)
+                                                            if df is not None and not df.empty:
+                                                                frames.append(df)
+                                                                st.success(f"✅ Loaded E2B XML from ZIP: `{xml_fn}`")
+                                                        
+                                                        os.unlink(temp_xml.name)
+                                                except Exception:
+                                                    pass
+                                        
+                                        # If we successfully loaded E2B, mark as processed
+                                        if any(frames):
+                                            processed_files.add(id(f))
+                                            continue
+                                    except Exception:
+                                        pass
+                                
+                                # If not E2B or E2B loading failed, show warning
                                 st.warning(
-                                    f"⚠️ **XML format detected**: The file `{f.name}` contains XML files, which are not currently supported. "
+                                    f"⚠️ **XML format detected**: The file `{f.name}` contains XML files. "
                                     f"Found: {', '.join(xml_files[:3])}{'...' if len(xml_files) > 3 else ''}\n\n"
                                     "**Supported formats:**\n"
+                                    "- E2B(R3) XML files (Argus, EudraVigilance exports)\n"
                                     "- FAERS ASCII files (DEMO, DRUG, REAC, OUTC, THER, INDI, RPSR as `.txt`)\n"
                                     "- CSV files\n"
                                     "- Excel files (.xlsx, .xls)\n"
                                     "- PDF files (tabular only)\n\n"
-                                    "**To use FAERS data:** Download the ASCII format (not XML) from FDA's website."
+                                    "**Note:** For FAERS data, use ASCII format (not XML) from FDA's website."
                                 )
                                 processed_files.add(id(f))
                                 continue  # Skip this file
@@ -183,7 +278,7 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
                     st.error(f"❌ Error loading `{f.name}`: {error_msg[:200]}")
                 pass  # will fall back to generic parsing
 
-    # 2) PDFs via faers_loader.load_pdf_files
+    # 3) PDFs via faers_loader.load_pdf_files
     pdf_files = [f for f in uploaded_files if f.name.lower().endswith(".pdf") and id(f) not in processed_files]
     if pdf_files:
         # Track progress for all PDF files at once
@@ -199,7 +294,7 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
         except Exception:
             pass
 
-    # 3) CSV / Excel / txt / generic zip
+    # 4) CSV / Excel / txt / generic zip
     for file in uploaded_files:
         if id(file) in processed_files:
             continue
@@ -242,7 +337,16 @@ def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFr
 
     if not frames:
         return None
-    return pd.concat(frames, ignore_index=True)
+    
+    # Add source tracking to each frame
+    for i, frame in enumerate(frames):
+        if 'source' not in frame.columns:
+            # Infer source from file type or add default
+            frame['source'] = 'FAERS'  # Default for now, can be enhanced
+    
+    combined_df = pd.concat(frames, ignore_index=True)
+    
+    return combined_df
 
 
 @st.cache_data(show_spinner=False)

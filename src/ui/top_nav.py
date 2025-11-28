@@ -10,6 +10,40 @@ import streamlit as st
 def render_top_nav() -> None:
     """Render fixed top navigation bar with page links."""
     
+    # Check authentication status
+    try:
+        from src.auth.auth import is_authenticated, get_current_user, logout_user
+        
+        is_auth = is_authenticated()
+        user = get_current_user() if is_auth else None
+        
+        # Generate auth buttons HTML
+        if is_auth and user:
+            # Show user menu
+            user_email = user.get('email', 'User')
+            user_org = user.get('organization', '')
+            auth_buttons_html = f'''
+                <div class="nav-user-menu" style="display: flex; align-items: center; gap: 1rem; margin-left: 1rem;">
+                    <span style="color: #94a3b8; font-size: 0.9rem;">{user_org or user_email}</span>
+                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'profile'}}, '*'); return false;" style="font-size: 0.9rem;">?? Profile</a>
+                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'logout'}}, '*'); return false;" style="font-size: 0.9rem;">?? Logout</a>
+                </div>
+            '''
+        else:
+            # Show login/register buttons
+            auth_buttons_html = '''
+                <div class="nav-auth-buttons" style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem;">
+                    <a class="nav-link" href="#" onclick="window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'nav_action', value: 'login'}, '*'); return false;" style="font-size: 0.9rem;">?? Login</a>
+                    <a class="nav-link" href="#" onclick="window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'nav_action', value: 'register'}, '*'); return false;" style="font-size: 0.9rem; background: rgba(59,130,246,0.2); padding: 0.4rem 0.8rem; border-radius: 6px;">?? Register</a>
+                </div>
+            '''
+    except Exception:
+        # Auth not available - show no auth buttons
+        auth_buttons_html = ''
+    
+    # Build navigation HTML separately to avoid f-string issues with CSS
+    nav_content = f'''<div class="aether-top-nav"><a class="nav-left" href="/" data-nav="home" target="_self"><span class="nav-icon">⚛️</span> <strong>AetherSignal</strong></a><div class="nav-right"><a class="nav-link" href="/" data-nav="home" target="_self">🏠 Home</a><a class="nav-link" href="/Quantum_PV_Explorer" data-nav="quantum" target="_self">⚛️ Quantum PV</a><a class="nav-link" href="/Social_AE_Explorer" data-nav="social" target="_self">🌐 Social AE</a>{auth_buttons_html}</div></div>'''
+    
     st.markdown("""
     <style>
     /* Fixed top nav below the Streamlit header */
@@ -115,15 +149,6 @@ def render_top_nav() -> None:
     </style>
 
     <button id="aether-sidebar-reopen" title="Toggle navigation">☰</button>
-
-    <div class="aether-top-nav">
-        <a class="nav-left" href="/" data-nav="home" target="_self"><span class="nav-icon">⚛️</span> <strong>AetherSignal</strong></a>
-        <div class="nav-right">
-            <a class="nav-link" href="/" data-nav="home" target="_self">🏠 Home</a>
-            <a class="nav-link" href="/Quantum_PV_Explorer" data-nav="quantum" target="_self">⚛️ Quantum PV</a>
-            <a class="nav-link" href="/Social_AE_Explorer" data-nav="social" target="_self">🌐 Social AE</a>
-        </div>
-    </div>
 
     <script>
     (function() {
@@ -293,4 +318,34 @@ def render_top_nav() -> None:
         }
     })();
     </script>
+    """ + nav_content + """
     """, unsafe_allow_html=True)
+    
+    # Handle navigation actions for authentication
+    try:
+        from src.auth.auth import is_authenticated, get_current_user, logout_user
+        
+        is_auth = is_authenticated()
+        user = get_current_user() if is_auth else None
+        
+        # Handle navigation actions
+        if 'nav_action' in st.session_state:
+            action = st.session_state.nav_action
+            del st.session_state.nav_action
+            
+            if action == 'login':
+                st.session_state.show_login = True
+                st.rerun()
+            elif action == 'register':
+                st.session_state.show_register = True
+                st.rerun()
+            elif action == 'profile':
+                st.session_state.show_profile = True
+                st.rerun()
+            elif action == 'logout':
+                logout_user()
+                st.success("Logged out successfully!")
+                st.rerun()
+    except Exception:
+        # Auth module not available or error - continue without auth
+        pass

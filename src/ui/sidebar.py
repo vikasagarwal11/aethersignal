@@ -13,16 +13,90 @@ from src import nl_query_parser
 def render_sidebar():
     """Render sidebar with filters and controls."""
     st.markdown("### ⚙️ Controls")
-    
-    # Reset session button
+
+    is_authed = st.session_state.get("authenticated", False)
+    if not is_authed:
+        if st.button("🔐 Login", key="sidebar_login", use_container_width=True):
+            st.switch_page("pages/Login.py")
+        if st.button("📝 Register", key="sidebar_register", use_container_width=True):
+            st.switch_page("pages/Register.py")
+    else:
+        st.caption(f"Signed in as {st.session_state.get('user_email', '')}")
+        if st.button("👤 Profile", key="sidebar_profile", use_container_width=True):
+            st.switch_page("pages/Profile.py")
+
+    # Clear filters & results button (with confirmation and auth preservation)
     st.markdown(
         "<div class='reset-session-hint'>Session</div>",
         unsafe_allow_html=True,
     )
-    if st.button("↺ Reset session", key="reset_session_sidebar", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.rerun()
+    
+    # Check if confirmation is pending
+    reset_confirmed = st.session_state.get("reset_session_confirmed", False)
+    
+    if not reset_confirmed:
+        if st.button("🗑️ Clear Filters & Results", key="reset_session_sidebar", use_container_width=True):
+            st.session_state.reset_session_confirmed = True
+            st.rerun()
+    else:
+        # Show confirmation dialog
+        st.warning("⚠️ This will clear all filters, query results, and in-memory data. Your saved data in the database will NOT be affected.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Confirm Clear", key="confirm_reset", use_container_width=True, type="primary"):
+                # Preserve authentication state
+                auth_keys_to_preserve = [
+                    "user_id",
+                    "user_email", 
+                    "user_session",
+                    "authenticated",
+                    "user_profile",
+                    "user_organization",
+                    "user_role"
+                ]
+                
+                # Save auth state
+                preserved_state = {}
+                for key in auth_keys_to_preserve:
+                    if key in st.session_state:
+                        preserved_state[key] = st.session_state[key]
+                
+                # Clear all session state
+                for k in list(st.session_state.keys()):
+                    del st.session_state[k]
+                
+                # Restore auth state
+                for key, value in preserved_state.items():
+                    st.session_state[key] = value
+                
+                # Try to reload data from database if authenticated
+                if preserved_state.get("authenticated") and preserved_state.get("user_id"):
+                    try:
+                        from src.pv_storage import load_pv_data
+                        
+                        user_id = preserved_state.get("user_id")
+                        user_profile = preserved_state.get("user_profile", {})
+                        organization = user_profile.get("organization", "") if isinstance(user_profile, dict) else ""
+                        
+                        # Load data from database
+                        df_from_db = load_pv_data(user_id, organization)
+                        if df_from_db is not None and not df_from_db.empty:
+                            st.session_state.normalized_data = df_from_db
+                            st.session_state.data = df_from_db
+                            st.session_state.data_reloaded_from_db = True
+                    except Exception:
+                        # Continue without database reload if it fails
+                        pass
+                
+                # Clear confirmation flag
+                st.session_state.reset_session_confirmed = False
+                st.rerun()
+        
+        with col2:
+            if st.button("❌ Cancel", key="cancel_reset", use_container_width=True):
+                st.session_state.reset_session_confirmed = False
+                st.rerun()
     
     st.markdown("---")
 
