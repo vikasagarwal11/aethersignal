@@ -204,9 +204,46 @@ def _detect_concepts(query_lower: str, filters: Dict) -> None:
         filters['intent'] = 'trend'
 
 
+# Cache for unique drug/reaction values to avoid repeated processing
+_term_cache: Dict[str, Tuple[set, Dict[str, str]]] = {}  # key: cache_key -> (normalized_set, original_to_normalized_mapping)
+
+def _get_unique_values_cache(normalized_df: pd.DataFrame, column: str) -> Tuple[set, Dict[str, str]]:
+    """
+    Get cached unique values for a column with normalized mapping.
+    This avoids re-processing 400K+ rows on every lookup.
+    """
+    # Create cache key from DataFrame id and column name
+    cache_key = f"{id(normalized_df)}_{column}"
+    
+    if cache_key not in _term_cache:
+        # Build unique set and mapping (only done once per DataFrame)
+        normalized_set = set()
+        original_to_normalized = {}
+        
+        if column in normalized_df.columns:
+            # Get unique values efficiently
+            unique_values = normalized_df[column].dropna().astype(str).unique()
+            for val in unique_values:
+                # Split on semicolon (drugs/reactions can have multiple per row)
+                for split_val in val.split('; '):
+                    split_val = split_val.strip()
+                    if split_val:
+                        normalized_val = normalize_text(split_val)
+                        if len(normalized_val) >= 3:  # Only meaningful terms
+                            normalized_set.add(normalized_val)
+                            # Store mapping (use first occurrence)
+                            if normalized_val not in original_to_normalized:
+                                original_to_normalized[normalized_val] = split_val
+        
+        _term_cache[cache_key] = (normalized_set, original_to_normalized)
+    
+    return _term_cache[cache_key]
+
+
 def _detect_term_in_dataset(term: str, normalized_df: Optional[pd.DataFrame]) -> Tuple[Optional[str], bool, bool]:
     """
     Check if a term exists in the dataset as a drug or reaction.
+    OPTIMIZED: Uses cached unique values instead of scanning all rows.
     
     Args:
         term: Term to check
@@ -229,28 +266,29 @@ def _detect_term_in_dataset(term: str, normalized_df: Optional[pd.DataFrame]) ->
     is_reaction = False
     matched_term = None
     
-    # Check drugs
+    # Check drugs (using cached unique values)
     if 'drug_name' in normalized_df.columns:
-        drug_series = normalized_df['drug_name'].astype(str).str.split('; ').explode()
-        drug_normalized = drug_series.apply(normalize_text)
-        # Check for exact or partial match
-        matches = drug_normalized[drug_normalized.str.contains(re.escape(term_normalized), na=False, case=False)]
-        if not matches.empty:
-            is_drug = True
-            # Get the most common match
-            matched_term = matches.value_counts().index[0] if len(matches) > 0 else term
+        drug_set, drug_mapping = _get_unique_values_cache(normalized_df, 'drug_name')
+        
+        # Fast lookup in set (O(1) instead of O(n))
+        # Check for exact match or partial match (term is substring of any drug)
+        for drug_norm in drug_set:
+            if term_normalized in drug_norm or drug_norm in term_normalized:
+                is_drug = True
+                matched_term = drug_mapping.get(drug_norm, term)
+                break  # Found a match, stop searching
     
-    # Check reactions
-    if 'reaction' in normalized_df.columns:
-        reaction_series = normalized_df['reaction'].astype(str).str.split('; ').explode()
-        reaction_normalized = reaction_series.apply(normalize_text)
-        # Check for exact or partial match
-        matches = reaction_normalized[reaction_normalized.str.contains(re.escape(term_normalized), na=False, case=False)]
-        if not matches.empty:
-            is_reaction = True
-            # If we haven't found a drug match, use reaction match
-            if not is_drug:
-                matched_term = matches.value_counts().index[0] if len(matches) > 0 else term
+    # Check reactions (using cached unique values)
+    if 'reaction' in normalized_df.columns and not is_drug:
+        reaction_set, reaction_mapping = _get_unique_values_cache(normalized_df, 'reaction')
+        
+        # Fast lookup in set
+        for reaction_norm in reaction_set:
+            if term_normalized in reaction_norm or reaction_norm in term_normalized:
+                is_reaction = True
+                if not is_drug:  # Only use reaction match if no drug match
+                    matched_term = reaction_mapping.get(reaction_norm, term)
+                break  # Found a match, stop searching
     
     return matched_term, is_drug, is_reaction
 

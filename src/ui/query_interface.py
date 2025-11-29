@@ -178,207 +178,19 @@ def render_nl_query_tab(normalized_df):
 
     st.markdown("<div class='block-card'>", unsafe_allow_html=True)
     
-    # Compact header
-    st.markdown("### Ask a question")
-    st.caption(
-        "Type a question in plain English, or start from a suggested tile."
-    )
-
-    smart_search = st.checkbox(
-        "✨ Smart search (typo correction + suggestions)",
-        value=False,  # OFF by default to preserve existing behavior
-        help="Correct likely typos for drugs/reactions and suggest alternatives.",
-    )
-
     starter_questions, top_drugs, top_reactions, all_drugs, all_reactions = _build_dynamic_starter_questions(
         normalized_df
     )
 
-    # Optimized layout: Main query box takes more prominence
-    main_col, side_col = st.columns([2.2, 1])
-
-    # ---------------- Main: query box (more prominent) ----------------
-    with main_col:
-        # Styled title for the query field
-        st.markdown("""
-        <div style='margin-bottom: 0.5rem;'>
-            <label style='font-size: 0.9rem; font-weight: 600; color: #1e293b; display: block; margin-bottom: 0.4rem;'>
-                Enter safety question
-            </label>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Wrapped text area with custom styling
-        st.markdown('<div class="query-textarea-wrapper">', unsafe_allow_html=True)
-        query_text = st.text_area(
-            "",  # Empty label since we have custom title above
-            value=st.session_state.get(
-                "query_text", st.session_state.get("last_query_text", "")
-            ),
-            height=100,  # Reduced from 160 to save space
-            key="query_input",
-            label_visibility="collapsed",  # Hide default label
-            placeholder=(
-                "Ask anything about your safety data, for example:\n"
-                "• Show serious cases with drug aspirin and reaction gastrointestinal bleeding since 2021\n"
-                "• Find cases in women age 30–60 with fatal outcomes\n"
-                "• Cases with drug X from 2020‑01‑01 to 2023‑12‑31"
-            ),
-            help=(
-                "Tips: Use 'drug X', 'reaction Y', 'age 18-65', 'serious', "
-                "'country US', 'since 2020', 'from 2020-01-01', 'until 2023-12-31'. "
-                "Multiple reactions default to OR (matches any). Use 'and' explicitly for AND logic."
-            ),
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Try to load data from database if not in session state
-        if st.session_state.get("normalized_data") is None:
-            try:
-                from src.auth.auth import is_authenticated, get_current_user
-                from src.pv_storage import load_pv_data
-                
-                if is_authenticated():
-                    user = get_current_user()
-                    if user:
-                        user_id = user.get('user_id')
-                        organization = user.get('organization', '')
-                        
-                        # Load data from database
-                        df_from_db = load_pv_data(user_id, organization)
-                        if df_from_db is not None and not df_from_db.empty:
-                            st.session_state.normalized_data = df_from_db
-                            st.session_state.data = df_from_db
-                            st.info("📊 Loaded your data from database.")
-            except Exception:
-                # Continue without database if it fails
-                pass
-        
-        run_query_enabled = (
-            st.session_state.data is not None
-            and st.session_state.normalized_data is not None
-        )
-        
-        # Button row with AI checkbox inline
-        btn_col, ai_col = st.columns([2, 1])
-        with btn_col:
-            run_query = st.button(
-                "🚀 Run query",
-                type="primary",
-                use_container_width=True,
-                disabled=not run_query_enabled,
-                key="run_main_query",
-            )
-        with ai_col:
-            # AI checkbox moved inline to save vertical space
-            use_llm = st.checkbox(
-                "🤖 AI-enhanced",
-                value=st.session_state.get("use_llm", False),
-                key="use_llm_checkbox",
-                help=(
-                    "⚠️ Privacy Notice: When enabled, AI features include:\n"
-                    "• Enhanced query interpretation\n"
-                    "• Literature summarization & insights\n"
-                    "• Case narrative analysis\n"
-                    "• Causal reasoning for signals\n"
-                    "• Enhanced MedDRA mapping\n\n"
-                    "Your data remains private, but query text and case narratives may be sent to external AI services "
-                    "(OpenAI/Claude/Groq). Disable for full privacy."
-                )
-            )
-            st.session_state.use_llm = use_llm
-
-        if not run_query_enabled and query_text:
-            st.info("ℹ️ Upload and load data first to run queries.")
-
-        if run_query and query_text and run_query_enabled:
-            with st.spinner("🔎 Interpreting your query…"):
-                working_query = query_text
-                applied_corrections: Optional[Dict[str, tuple]] = None
-
-                # Smart typo correction (auto-apply when confident)
-                if smart_search and normalized_df is not None:
-                    suggestions = suggest_query_corrections(working_query, normalized_df)
-                    if suggestions:
-                        corrected = get_corrected_query(working_query, suggestions)
-                        applied_corrections = suggestions
-                        working_query = corrected
-                        st.info(f"Did you mean: **{corrected}**")
-                        st.session_state.last_query_corrections = suggestions
-
-                # Use hybrid router (rule-based first, LLM fallback if enabled)
-                try:
-                    from src.ai.hybrid_router import route_query
-                    filters, method, confidence = route_query(
-                        working_query, 
-                        normalized_df, 
-                        use_llm=use_llm,
-                        llm_confidence_threshold=0.6
-                    )
-                    # Store method for display
-                    st.session_state.last_query_method = method
-                    st.session_state.last_query_confidence = confidence
-                except ImportError:
-                    # Fallback to direct parser if AI module not available
-                    filters = nl_query_parser.parse_query_to_filters(working_query, normalized_df)
-                    st.session_state.last_query_method = "rule_based"
-                    st.session_state.last_query_confidence = 1.0
-                
-                is_valid, error_msg = nl_query_parser.validate_filters(filters, normalized_df)
-
-                # Keyword fallback if parsing failed
-                if smart_search and (not is_valid or not filters):
-                    drug_candidates = find_top_candidates(normalized_df, "drug_name")
-                    react_candidates = find_top_candidates(normalized_df, "reaction")
-                    st.warning(error_msg or "Could not understand the query. Showing top candidates.")
-                    fallback_filters = {}
-                    if drug_candidates:
-                        fallback_filters["drug"] = drug_candidates[0]
-                    if react_candidates:
-                        fallback_filters["reaction"] = react_candidates[0]
-                    if fallback_filters:
-                        filters = fallback_filters
-                        is_valid = True
-                        st.info(f"Applying fallback: {filters}")
-                
-                if not is_valid:
-                    st.error(
-                        error_msg
-                        or "Could not understand the query. Please refine your question."
-                    )
-                else:
-                    # Save to history
-                    history = st.session_state.get("query_history", [])
-                    history.append(
-                        {
-                            "query_text": working_query,
-                            "timestamp": datetime.now().isoformat(),
-                            "source": "nl",
-                            "corrected": bool(applied_corrections),
-                        }
-                    )
-                    st.session_state.query_history = history[-10:]
-
-                    st.session_state.last_query_text = working_query
-                    st.session_state.last_filters = filters
-                    st.session_state.last_query_source = "nl"
-                    st.session_state.show_results = True
-                    st.rerun()
-
-        if st.session_state.get("last_query_text"):
-            st.markdown("---")
-            st.caption(
-                f"🕒 Last query: *'{st.session_state.last_query_text}'* "
-                f"(source: {st.session_state.get('last_query_source','nl')})"
-            )
-
-    # ---------------- Side: starter tiles, saved queries, history (compact) ----------------
-    with side_col:
-        # Starter tiles (compact)
-        st.markdown("#### ⚡ Starter questions")
+    # OPTIMIZED HORIZONTAL LAYOUT: Better use of screen real estate
+    # Row 1: Starter Questions | Top Drugs | Top Reactions (3 columns)
+    st.markdown("### ⚡ Quick Access")
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    
+    with row1_col1:
+        st.markdown("**⚡ Starter Questions**")
         if starter_questions:
-            # Use smaller buttons in a more compact layout
-            for idx, (title, query, icon) in enumerate(starter_questions):
+            for idx, (title, query, icon) in enumerate(starter_questions[:4]):  # Limit to 4 to fit
                 if st.button(
                     f"{icon} {title}",
                     key=f"starter_{idx}",
@@ -391,25 +203,20 @@ def render_nl_query_tab(normalized_df):
                     st.rerun()
         else:
             st.caption("Upload data to see suggestions.")
-
-        # Quick chips for top drugs / reactions (compact)
-        if top_drugs or top_reactions:
-            st.markdown("---")
+    
+    with row1_col2:
+        st.markdown("**💊 Top Drugs**")
         if top_drugs:
-            st.markdown("**💊 Top drugs**")
-            # Show fewer drugs to save space
-            for idx, drug in enumerate(top_drugs[:4]):
+            for idx, drug in enumerate(top_drugs[:4]):  # Limit to 4
                 if st.button(
                     drug,
                     key=f"drug_chip_{idx}",
                     use_container_width=True,
                 ):
                     current = st.session_state.get("query_text", "")
-                    # Check if this drug is already in the query to prevent duplicates
                     drug_lower = drug.lower()
                     current_lower = current.lower()
                     if drug_lower in current_lower and f"drug {drug_lower}" in current_lower:
-                        # Drug already in query, don't add again
                         st.info(f"ℹ️ '{drug}' is already in your query")
                     else:
                         new_q = (
@@ -420,247 +227,369 @@ def render_nl_query_tab(normalized_df):
                         st.session_state.query_text = new_q
                         st.rerun()
             
-            # Browse all drugs (collapsible, less prominent)
-            if all_drugs and len(all_drugs) > 6:
-                with st.expander(f"🔍 Browse all drugs ({len(all_drugs)} total)", expanded=False):
+            # Browse all drugs (collapsible)
+            if all_drugs and len(all_drugs) > 4:
+                with st.expander(f"🔍 All drugs ({len(all_drugs)})", expanded=False):
                     selected_drugs = st.multiselect(
-                        "Select drug(s) to add to query",
+                        "Select drug(s)",
                         options=all_drugs,
                         default=[],
                         key="browse_all_drugs",
-                        help="Select one or more drugs. They will be added to your query with OR logic.",
+                        help="Select drugs to add to query",
                     )
                     if selected_drugs:
                         current = st.session_state.get("query_text", "")
                         current_lower = current.lower()
-                        new_drugs = []
-                        for drug in selected_drugs:
-                            drug_lower = drug.lower()
-                            # Check if drug is already in query
-                            if drug_lower not in current_lower or f"drug {drug_lower}" not in current_lower:
-                                new_drugs.append(drug)
-                        
+                        new_drugs = [d for d in selected_drugs if d.lower() not in current_lower]
                         if new_drugs:
-                            # Add all new drugs with OR logic
                             drug_terms = " OR ".join([f"drug {d}" for d in new_drugs])
-                            if current:
-                                new_q = f"{current} OR {drug_terms}".strip()
-                            else:
-                                new_q = f"Show cases with {drug_terms}"
+                            new_q = f"{current} OR {drug_terms}".strip() if current else f"Show cases with {drug_terms}"
                             st.session_state.query_text = new_q
                             st.rerun()
-                        else:
-                            st.info("ℹ️ All selected drugs are already in your query")
-        
+        else:
+            st.caption("No drug data available.")
+    
+    with row1_col3:
+        st.markdown("**⚠️ Top Reactions**")
         if top_reactions:
-            st.markdown("**⚠️ Top reactions**")
-            # Show fewer reactions to save space
-            for idx, reaction in enumerate(top_reactions[:4]):
+            for idx, reaction in enumerate(top_reactions[:4]):  # Limit to 4
                 if st.button(
                     reaction,
                     key=f"reaction_chip_{idx}",
                     use_container_width=True,
                 ):
                     current = st.session_state.get("query_text", "")
-                    # Check if this reaction is already in the query to prevent duplicates
                     reaction_lower = reaction.lower()
                     current_lower = current.lower()
                     if reaction_lower in current_lower and f"reaction {reaction_lower}" in current_lower:
-                        # Reaction already in query, don't add again
                         st.info(f"ℹ️ '{reaction}' is already in your query")
                     else:
-                        # Check if there's already a reaction in the query
                         has_reaction = "reaction" in current_lower
                         if has_reaction:
-                            # Add with OR to make it explicit (default behavior is OR)
-                            new_q = (
-                                f"{current} OR reaction {reaction}".strip()
-                                if current
-                                else f"Show cases with reaction {reaction}"
-                            )
+                            new_q = f"{current} OR reaction {reaction}".strip() if current else f"Show cases with reaction {reaction}"
                         else:
-                            new_q = (
-                                f"{current} reaction {reaction}".strip()
-                                if current
-                                else f"Show cases with reaction {reaction}"
-                            )
+                            new_q = f"{current} reaction {reaction}".strip() if current else f"Show cases with reaction {reaction}"
                         st.session_state.query_text = new_q
                         st.rerun()
             
-            # Browse all reactions (collapsible, less prominent)
-            if all_reactions and len(all_reactions) > 6:
-                with st.expander(f"🔍 Browse all reactions ({len(all_reactions)} total)", expanded=False):
+            # Browse all reactions (collapsible)
+            if all_reactions and len(all_reactions) > 4:
+                with st.expander(f"🔍 All reactions ({len(all_reactions)})", expanded=False):
                     selected_reactions = st.multiselect(
-                        "Select reaction(s) to add to query",
+                        "Select reaction(s)",
                         options=all_reactions,
                         default=[],
                         key="browse_all_reactions",
-                        help="Select one or more reactions. They will be added to your query with OR logic.",
+                        help="Select reactions to add to query",
                     )
                     if selected_reactions:
                         current = st.session_state.get("query_text", "")
                         current_lower = current.lower()
-                        new_reactions = []
-                        for reaction in selected_reactions:
-                            reaction_lower = reaction.lower()
-                            # Check if reaction is already in query
-                            if reaction_lower not in current_lower or f"reaction {reaction_lower}" not in current_lower:
-                                new_reactions.append(reaction)
-                        
+                        new_reactions = [r for r in selected_reactions if r.lower() not in current_lower]
                         if new_reactions:
-                            # Add all new reactions with OR logic
                             reaction_terms = " OR ".join([f"reaction {r}" for r in new_reactions])
-                            if current:
-                                # Check if there's already a reaction in the query
-                                has_reaction = "reaction" in current_lower
-                                if has_reaction:
-                                    new_q = f"{current} OR {reaction_terms}".strip()
-                                else:
-                                    new_q = f"{current} {reaction_terms}".strip()
+                            has_reaction = "reaction" in current_lower
+                            if has_reaction:
+                                new_q = f"{current} OR {reaction_terms}".strip()
                             else:
-                                new_q = f"Show cases with {reaction_terms}"
+                                new_q = f"{current} {reaction_terms}".strip() if current else f"Show cases with {reaction_terms}"
                             st.session_state.query_text = new_q
                             st.rerun()
-                        else:
-                            st.info("ℹ️ All selected reactions are already in your query")
-
-        # Saved queries
-        st.markdown("---")
+        else:
+            st.caption("No reaction data available.")
+    
+    st.markdown("---")
+    
+    # Row 2: Saved Queries | Recent Queries (2 columns)
+    row2_col1, row2_col2 = st.columns(2)
+    
+    with row2_col1:
+        st.markdown("**📁 Saved Queries**")
         saved_queries = st.session_state.get("saved_queries", [])
-        with st.expander("📁 Saved queries", expanded=False):
-            if saved_queries:
-                for i, sq in enumerate(saved_queries):
-                    label = f"▶ {sq['name']}"
-                    if st.button(label, key=f"run_saved_{i}", use_container_width=True):
-                        st.session_state.query_text = sq["query_text"]
-                        st.session_state.last_query_text = sq["query_text"]
-                        st.session_state.last_filters = sq["filters"]
-                        st.session_state.last_query_source = "saved"
-                        st.session_state.show_results = True
-                        st.rerun()
-            else:
-                st.caption("No saved queries yet.")
-
-            save_name = st.text_input(
-                "Name current query",
-                key="save_query_name",
-                placeholder="e.g., Semaglutide pancreatitis 2024",
-            )
-            can_save = bool(
-                st.session_state.get("last_filters")
-                and st.session_state.get("last_query_text")
-            )
-            if st.button(
-                "💾 Save current query",
-                key="save_query_button",
-                use_container_width=True,
-                disabled=not can_save,
-            ):
-                name = save_name.strip() or f"Query {datetime.now():%Y-%m-%d %H:%M}"
-                saved = st.session_state.get("saved_queries", [])
-                if any(sq["name"] == name for sq in saved):
-                    st.warning("A saved query with that name already exists.")
-                else:
-                    saved.append(
-                        {
+        if saved_queries:
+            for i, sq in enumerate(saved_queries[:5]):  # Limit to 5
+                label = f"▶ {sq['name']}"
+                if st.button(label, key=f"run_saved_{i}", use_container_width=True):
+                    st.session_state.query_text = sq["query_text"]
+                    st.session_state.last_query_text = sq["query_text"]
+                    st.session_state.last_filters = sq["filters"]
+                    st.session_state.last_query_source = "saved"
+                    st.session_state.show_results = True
+                    st.rerun()
+            
+            # Save current query (compact)
+            with st.expander("💾 Save Current Query", expanded=False):
+                save_name = st.text_input(
+                    "Query name",
+                    key="save_query_name",
+                    placeholder="e.g., Semaglutide pancreatitis 2024",
+                )
+                can_save = bool(
+                    st.session_state.get("last_filters")
+                    and st.session_state.get("last_query_text")
+                )
+                if st.button("💾 Save", key="save_query_button", use_container_width=True, disabled=not can_save):
+                    name = save_name.strip() or f"Query {datetime.now():%Y-%m-%d %H:%M}"
+                    saved = st.session_state.get("saved_queries", [])
+                    if any(sq["name"] == name for sq in saved):
+                        st.warning("Query name already exists.")
+                    else:
+                        saved.append({
                             "name": name,
                             "query_text": st.session_state.get("last_query_text", ""),
                             "filters": st.session_state.get("last_filters", {}),
-                        }
-                    )
-                    st.session_state.saved_queries = saved[-15:]
-                    st.success(f"✅ Saved: “{name}”")
-                    st.rerun()
-            
-            # Export/Import queries
-            st.markdown("---")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Export saved queries
-                if saved_queries:
-                    import json
-                    export_data = {
-                        "saved_queries": saved_queries,
-                        "exported_at": datetime.now().isoformat(),
-                        "version": "1.0",
-                    }
-                    export_json = json.dumps(export_data, indent=2)
-                    st.download_button(
-                        "📥 Export queries",
-                        export_json,
-                        f"aethersignal_queries_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        "application/json",
-                        use_container_width=True,
-                        help="Export all saved queries as JSON",
-                    )
-                else:
-                    st.caption("No queries to export")
-            
-            with col2:
-                # Import queries
-                uploaded_file = st.file_uploader(
-                    "📤 Import queries",
-                    type=["json"],
-                    key="import_queries_file",
-                    help="Import saved queries from JSON file",
-                )
-                if uploaded_file:
-                    try:
-                        import json
-                        import_data = json.loads(uploaded_file.read())
-                        
-                        if "saved_queries" in import_data:
-                            imported = import_data["saved_queries"]
-                            existing = st.session_state.get("saved_queries", [])
-                            existing_names = {sq["name"] for sq in existing}
-                            
-                            # Merge, avoiding duplicates by name
-                            merged = existing.copy()
-                            added = 0
-                            for query in imported:
-                                if query["name"] not in existing_names:
-                                    merged.append(query)
-                                    existing_names.add(query["name"])
-                                    added += 1
-                            
-                            st.session_state.saved_queries = merged[-15:]  # Keep last 15
-                            if added > 0:
-                                st.success(f"✅ Imported {added} new query/queries")
-                            else:
-                                st.info("ℹ️ No new queries imported (all already exist)")
-                            st.rerun()
-                        else:
-                            st.error("Invalid query file format")
-                    except Exception as e:
-                        st.error(f"Error importing queries: {str(e)}")
-
-        # Recent history
-        history = st.session_state.get("query_history", [])
-        with st.expander("📜 Recent queries", expanded=False):
-            if history:
-                history_rev = list(reversed(history[-5:]))
-                if st.button(
-                    "🗑️ Clear history",
-                    key="clear_history",
-                    use_container_width=True,
-                ):
-                    st.session_state.query_history = []
-                    st.rerun()
-
-                for i, entry in enumerate(history_rev):
-                    preview = (
-                        entry["query_text"][:60] + "…"
-                        if len(entry["query_text"]) > 60
-                        else entry["query_text"]
-                    )
-                    ts = datetime.fromisoformat(entry["timestamp"]).strftime("%H:%M")
-                    label = f"{preview} ({ts})"
-                    if st.button(label, key=f"history_use_{i}", use_container_width=True):
-                        st.session_state.query_text = entry["query_text"]
+                        })
+                        st.session_state.saved_queries = saved[-15:]
+                        st.success(f"✅ Saved: {name}")
                         st.rerun()
+        else:
+            st.caption("No saved queries yet.")
+            # Allow saving even if no saved queries exist
+            with st.expander("💾 Save Current Query", expanded=False):
+                save_name = st.text_input(
+                    "Query name",
+                    key="save_query_name",
+                    placeholder="e.g., Semaglutide pancreatitis 2024",
+                )
+                can_save = bool(
+                    st.session_state.get("last_filters")
+                    and st.session_state.get("last_query_text")
+                )
+                if st.button("💾 Save", key="save_query_button", use_container_width=True, disabled=not can_save):
+                    name = save_name.strip() or f"Query {datetime.now():%Y-%m-%d %H:%M}"
+                    saved = st.session_state.get("saved_queries", [])
+                    saved.append({
+                        "name": name,
+                        "query_text": st.session_state.get("last_query_text", ""),
+                        "filters": st.session_state.get("last_filters", {}),
+                    })
+                    st.session_state.saved_queries = saved[-15:]
+                    st.success(f"✅ Saved: {name}")
+                    st.rerun()
+    
+    with row2_col2:
+        st.markdown("**🕒 Recent Queries**")
+        history = st.session_state.get("query_history", [])
+        if history:
+            # Show last 5 queries (most recent first)
+            for entry in reversed(history[-5:]):
+                query_text_display = entry.get("query_text", "")[:50] + "..." if len(entry.get("query_text", "")) > 50 else entry.get("query_text", "")
+                if st.button(
+                    f"▶ {query_text_display}",
+                    key=f"recent_{hash(entry.get('query_text', ''))}",
+                    use_container_width=True,
+                    help=entry.get("query_text", ""),
+                ):
+                    st.session_state.query_text = entry["query_text"]
+                    st.session_state.last_query_text = entry["query_text"]
+                    st.session_state.show_results = False
+                    st.rerun()
+        else:
+            st.caption("No recent queries.")
+    
+    st.markdown("---")
+    
+    # Row 3: Main Query Input Section (full width)
+    st.markdown("### 💬 Ask a question")
+    st.caption("Type a question in plain English, or use the options above.")
+
+    # Checkboxes in a row above the query input
+    checkbox_col1, checkbox_col2 = st.columns([1, 1])
+    with checkbox_col1:
+        smart_search = st.checkbox(
+            "✨ Smart search (typo correction + suggestions)",
+            value=False,
+            help="Correct likely typos for drugs/reactions and suggest alternatives.",
+        )
+    with checkbox_col2:
+        use_llm = st.checkbox(
+            "🤖 AI-enhanced",
+            value=st.session_state.get("use_llm", False),
+            key="use_llm_checkbox",
+            help=(
+                "⚠️ Privacy Notice: When enabled, AI features include enhanced query interpretation, "
+                "literature summarization, and case narrative analysis. Query text may be sent to external AI services."
+            )
+        )
+        st.session_state.use_llm = use_llm
+
+    # Main query input (full width)
+    st.markdown("""
+    <div style='margin-bottom: 0.5rem;'>
+        <label style='font-size: 0.9rem; font-weight: 600; color: #1e293b; display: block; margin-bottom: 0.4rem;'>
+            Enter safety question
+        </label>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="query-textarea-wrapper">', unsafe_allow_html=True)
+    query_text = st.text_area(
+        "",
+        value=st.session_state.get(
+            "query_text", st.session_state.get("last_query_text", "")
+        ),
+        height=100,
+        key="query_input",
+        label_visibility="collapsed",
+        placeholder=(
+            "Ask anything about your safety data, for example:\n"
+            "• Show serious cases with drug aspirin and reaction gastrointestinal bleeding since 2021\n"
+            "• Find cases in women age 30–60 with fatal outcomes\n"
+            "• Cases with drug X from 2020‑01‑01 to 2023‑12‑31"
+        ),
+        help=(
+            "Tips: Use 'drug X', 'reaction Y', 'age 18-65', 'serious', "
+            "'country US', 'since 2020', 'from 2020-01-01', 'until 2023-12-31'. "
+            "Multiple reactions default to OR (matches any). Use 'and' explicitly for AND logic."
+        ),
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Try to load data from database if not in session state
+    if st.session_state.get("normalized_data") is None:
+        try:
+            from src.auth.auth import is_authenticated, get_current_user
+            from src.pv_storage import load_pv_data
+            
+            if is_authenticated():
+                user = get_current_user()
+                if user:
+                    user_id = user.get('user_id')
+                    organization = user.get('organization', '')
+                    
+                    # Load data from database
+                    df_from_db = load_pv_data(user_id, organization)
+                    if df_from_db is not None and not df_from_db.empty:
+                        st.session_state.normalized_data = df_from_db
+                        st.session_state.data = df_from_db
+                        st.info("📊 Loaded your data from database.")
+        except Exception:
+            pass
+    
+    run_query_enabled = (
+        st.session_state.data is not None
+        and st.session_state.normalized_data is not None
+    )
+    
+    # Run query button (centered, prominent)
+    button_col1, button_col2, button_col3 = st.columns([1, 2, 1])
+    with button_col2:
+        run_query = st.button(
+            "🚀 Run query",
+            type="primary",
+            use_container_width=True,
+            disabled=not run_query_enabled,
+            key="run_main_query",
+        )
+
+    if not run_query_enabled and query_text:
+        st.info("ℹ️ Upload and load data first to run queries.")
+
+    if run_query and query_text and run_query_enabled:
+        with st.spinner("🔎 Interpreting your query…"):
+            import signal
+            import time
+            
+            working_query = query_text
+            applied_corrections: Optional[Dict[str, tuple]] = None
+            
+            start_time = time.time()
+            timeout_seconds = 30  # 30 second timeout
+
+            try:
+                # Smart typo correction (auto-apply when confident) - with timeout check
+                if smart_search and normalized_df is not None:
+                    if time.time() - start_time < timeout_seconds:
+                        suggestions = suggest_query_corrections(working_query, normalized_df)
+                        if suggestions:
+                            corrected = get_corrected_query(working_query, suggestions)
+                            applied_corrections = suggestions
+                            # Only show suggestion if it's different from the original
+                            if corrected.strip().lower() != working_query.strip().lower():
+                                working_query = corrected
+                                st.info(f"Did you mean: **{corrected}**")
+                                st.session_state.last_query_corrections = suggestions
+                            else:
+                                # Correction resulted in same query - don't show or apply
+                                applied_corrections = None
+                    else:
+                        st.warning("⏱️ Query correction timed out, skipping...")
+
+                # Use hybrid router (rule-based first, LLM fallback if enabled) - with timeout check
+                if time.time() - start_time < timeout_seconds:
+                    try:
+                        from src.ai.hybrid_router import route_query
+                        filters, method, confidence = route_query(
+                            working_query, 
+                            normalized_df, 
+                            use_llm=use_llm,
+                            llm_confidence_threshold=0.6
+                        )
+                        # Store method for display
+                        st.session_state.last_query_method = method
+                        st.session_state.last_query_confidence = confidence
+                    except ImportError:
+                        # Fallback to direct parser if AI module not available
+                        filters = nl_query_parser.parse_query_to_filters(working_query, normalized_df)
+                        st.session_state.last_query_method = "rule_based"
+                        st.session_state.last_query_confidence = 1.0
+                else:
+                    st.error("⏱️ Query interpretation timed out (30 seconds). Please try a simpler query or disable smart search.")
+                    filters = {}
+                
+                is_valid, error_msg = nl_query_parser.validate_filters(filters)
+                
+            except Exception as e:
+                st.error(f"❌ Error interpreting query: {str(e)[:200]}")
+                filters = {}
+                is_valid = False
+                error_msg = "Query interpretation failed. Please try rephrasing your question."
+
+            # Keyword fallback if parsing failed
+            if smart_search and (not is_valid or not filters):
+                drug_candidates = find_top_candidates(normalized_df, "drug_name")
+                react_candidates = find_top_candidates(normalized_df, "reaction")
+                st.warning(error_msg or "Could not understand the query. Showing top candidates.")
+                fallback_filters = {}
+                if drug_candidates:
+                    fallback_filters["drug"] = drug_candidates[0]
+                if react_candidates:
+                    fallback_filters["reaction"] = react_candidates[0]
+                if fallback_filters:
+                    filters = fallback_filters
+                    is_valid = True
+                    st.info(f"Applying fallback: {fallback_filters}")
+            
+            if not is_valid:
+                st.error(
+                    error_msg
+                    or "Could not understand the query. Please refine your question."
+                )
             else:
-                st.caption("Run a query to see it here.")
+                # Save to history
+                history = st.session_state.get("query_history", [])
+                history.append(
+                    {
+                        "query_text": working_query,
+                        "timestamp": datetime.now().isoformat(),
+                        "source": "nl",
+                        "corrected": bool(applied_corrections),
+                    }
+                )
+                st.session_state.query_history = history[-10:]
+
+                st.session_state.last_query_text = working_query
+                st.session_state.last_filters = filters
+                st.session_state.last_query_source = "nl"
+                st.session_state.show_results = True
+                st.rerun()
+
+    if st.session_state.get("last_query_text"):
+        st.markdown("---")
+        st.caption(
+            f"🕒 Last query: *'{st.session_state.last_query_text}'* "
+            f"(source: {st.session_state.get('last_query_source','nl')})"
+        )
 
     st.markdown("</div>", unsafe_allow_html=True)
 

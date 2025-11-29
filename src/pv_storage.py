@@ -17,21 +17,44 @@ except ImportError:
     Client = None
 
 
-def get_supabase_db() -> Optional[Client]:
-    """Get Supabase client for database operations."""
+def get_supabase_db(use_service_key: bool = True) -> Optional[Client]:
+    """
+    Get Supabase client for database operations.
+    
+    Args:
+        use_service_key: If True, use service key (bypasses RLS). If False, use anon key with user session.
+    """
     if not SUPABASE_AVAILABLE:
         return None
     
     url = os.getenv("SUPABASE_URL", "https://scrksfxnkxmvvdzwmqnc.supabase.co")
-    # Use service key for backend operations
-    key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
     
-    if not key:
-        # Development fallback
-        key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjcmtzZnhua3htdnZkendtcW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2MDM2NTcsImV4cCI6MjA3OTE3OTY1N30.tumWvHiXv7VsX0QTm-iyc5L0dwGFDTtgEkHAUieMcIY"
+    if use_service_key:
+        # Use service key for backend operations (bypasses RLS)
+        key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+        
+        if not key:
+            # Development fallback - but this is anon key, not service key!
+            key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjcmtzZnhua3htdnZkendtcW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM2MDM2NTcsImV4cCI6MjA3OTE3OTY1N30.tumWvHiXv7VsX0QTm-iyc5L0dwGFDTtgEkHAUieMcIY"
+    else:
+        # Use anon key and try to set user session if available
+        key = os.getenv("SUPABASE_ANON_KEY")
+        if not key:
+            return None
     
     try:
-        return create_client(url, key)
+        client = create_client(url, key)
+        
+        # If using anon key, try to set user session for RLS
+        if not use_service_key:
+            user_session = st.session_state.get("user_session")
+            if user_session and hasattr(user_session, 'access_token'):
+                try:
+                    client.auth.set_session(user_session.access_token, user_session.refresh_token)
+                except Exception:
+                    pass  # Session might be expired
+        
+        return client
     except Exception:
         return None
 
@@ -103,23 +126,54 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
         batch_size = 1000
         total_inserted = 0
         errors = 0
+        error_details = []
         
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (len(records) + batch_size - 1) // batch_size
+            
             try:
                 response = sb.table("pv_cases").insert(batch).execute()
-                if response.data:
+                
+                # Check if response has data (successful insert)
+                if response.data and len(response.data) > 0:
                     total_inserted += len(response.data)
+                else:
+                    # No data returned - likely RLS blocked or silent failure
+                    errors += len(batch)
+                    error_details.append(f"Batch {batch_num}/{total_batches}: No data returned (possibly blocked by RLS)")
+                    
             except Exception as e:
                 errors += len(batch)
+                error_msg = str(e)
+                # Store first few error messages for debugging
+                if len(error_details) < 5:
+                    error_details.append(f"Batch {batch_num}/{total_batches}: {error_msg[:200]}")
                 # Continue with next batch
         
+        # If nothing was inserted, this is a failure
+        if total_inserted == 0 and len(records) > 0:
+            # Collect error information
+            error_summary = "; ".join(error_details[:3]) if error_details else "Unknown error - check database connection and RLS policies"
+            return {
+                "success": False,
+                "inserted": 0,
+                "errors": errors,
+                "total": len(records),
+                "error": f"No records inserted. Possible causes: RLS policy blocking, invalid user_id, or database connection issue. Details: {error_summary}",
+                "error_details": error_details[:5] if error_details else []
+            }
+        
+        # Partial or full success
+        success = errors == 0
         return {
-            "success": True,
+            "success": success,
             "inserted": total_inserted,
             "errors": errors,
             "total": len(records),
-            "message": f"Stored {total_inserted} cases in database."
+            "message": f"Stored {total_inserted:,} cases in database." + (f" ({errors:,} failed)" if errors > 0 else ""),
+            "error_details": error_details[:5] if error_details and errors > 0 else []
         }
         
     except Exception as e:

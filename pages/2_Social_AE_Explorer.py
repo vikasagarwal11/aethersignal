@@ -5,6 +5,13 @@ Full-page module for exploring social media adverse events.
 
 import streamlit as st
 
+# Restore authentication session first, before anything else
+try:
+    from src.auth.auth import restore_session
+    restore_session()
+except Exception:
+    pass
+
 from src.styles import apply_theme
 from src.app_helpers import initialize_session
 from src.ui.top_nav import render_top_nav

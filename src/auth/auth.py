@@ -327,14 +327,80 @@ def get_current_user() -> Optional[Dict[str, Any]]:
     }
 
 
+def restore_session() -> bool:
+    """
+    Restore authentication session from stored session token.
+    This should be called on each page load to maintain auth across pages.
+    
+    Returns:
+        True if session was restored, False otherwise
+    """
+    # Check if we have basic auth info stored
+    user_id = st.session_state.get("user_id")
+    user_session = st.session_state.get("user_session")
+    
+    # If we have user_id and session, we're authenticated - just ensure state is complete
+    if user_id and user_session:
+        try:
+            # Ensure authenticated flag is set
+            if not st.session_state.get("authenticated"):
+                st.session_state.authenticated = True
+            
+            # Restore email if missing
+            if not st.session_state.get("user_email") and SUPABASE_AVAILABLE:
+                try:
+                    profile = get_user_profile(user_id)
+                    if profile:
+                        st.session_state.user_email = profile.get("email", "")
+                except Exception:
+                    pass
+            
+            # Load profile if not loaded
+            if not st.session_state.get("user_profile") and SUPABASE_AVAILABLE:
+                try:
+                    profile = get_user_profile(user_id)
+                    if profile:
+                        st.session_state.user_profile = profile
+                        st.session_state.user_organization = profile.get("organization", "")
+                        st.session_state.user_role = profile.get("role", "scientist")
+                except Exception:
+                    pass
+            
+            return True
+        except Exception:
+            # Error restoring - clear session
+            try:
+                logout_user()
+            except Exception:
+                pass
+            return False
+    
+    return False
+
+
 def is_authenticated() -> bool:
     """
     Check if user is currently authenticated.
+    Also attempts to restore session if not authenticated but session exists.
     
     Returns:
         True if authenticated, False otherwise
     """
-    return st.session_state.get("authenticated", False) and st.session_state.get("user_id") is not None
+    # First check if already authenticated
+    if st.session_state.get("authenticated") and st.session_state.get("user_id"):
+        return True
+    
+    # Try to restore session from stored token
+    # This handles the case where we navigate between pages and session state
+    # might have been partially cleared
+    user_id = st.session_state.get("user_id")
+    user_session = st.session_state.get("user_session")
+    
+    if user_id or user_session:
+        if restore_session():
+            return True
+    
+    return False
 
 
 def reset_password(email: str) -> Dict[str, Any]:

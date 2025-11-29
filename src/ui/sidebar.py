@@ -14,14 +14,25 @@ def render_sidebar():
     """Render sidebar with filters and controls."""
     st.markdown("### ⚙️ Controls")
 
-    is_authed = st.session_state.get("authenticated", False)
+    # Use proper authentication check function
+    try:
+        from src.auth.auth import is_authenticated, get_current_user
+        is_authed = is_authenticated()
+        user = get_current_user() if is_authed else None
+    except Exception:
+        # Fallback to session state if auth module not available
+        is_authed = st.session_state.get("authenticated", False)
+        user = None
+    
     if not is_authed:
         if st.button("🔐 Login", key="sidebar_login", use_container_width=True):
             st.switch_page("pages/Login.py")
         if st.button("📝 Register", key="sidebar_register", use_container_width=True):
             st.switch_page("pages/Register.py")
     else:
-        st.caption(f"Signed in as {st.session_state.get('user_email', '')}")
+        # Show signed-in user info
+        user_email = user.get('email', '') if user else st.session_state.get('user_email', 'Unknown')
+        st.caption(f"Signed in as {user_email}")
         if st.button("👤 Profile", key="sidebar_profile", use_container_width=True):
             st.switch_page("pages/Profile.py")
 

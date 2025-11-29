@@ -405,14 +405,95 @@ def render_upload_section():
         load_clicked = st.button("🔄 Load & map data", disabled=not uploaded_files)
     elif data_loaded:
         # Data is already loaded - show prominent status instead of button
-        st.markdown("""
+        # Check database storage status
+        db_status = st.session_state.get('db_storage_status', None)
+        from src.auth.auth import is_authenticated
+        
+        # Build status message HTML
+        status_html = """
         <div style='padding: 1rem; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 2px solid #22c55e; border-radius: 8px; margin: 0.75rem 0;'>
             <div style='font-size: 1.1rem; font-weight: 700; color: #15803d; margin-bottom: 0.5rem;'>✅ Data Already Loaded</div>
-            <div style='font-size: 0.95rem; color: #16a34a;'>
+            <div style='font-size: 0.95rem; color: #16a34a; margin-bottom: 0.75rem;'>
                 Your data is ready! Scroll down to <strong>Step 2: Query Your Data</strong> to start exploring.
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+        """
+        
+        # Add database storage status if available
+        if db_status:
+            if db_status.get("success"):
+                inserted = db_status.get('inserted', 0)
+                total = db_status.get('total', 0)
+                status_html += f"""
+            <div style='padding: 0.75rem; background: #f0fdf4; border-left: 4px solid #22c55e; border-radius: 6px; margin-top: 0.5rem;'>
+                <div style='font-size: 0.9rem; font-weight: 600; color: #15803d; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+                <div style='font-size: 0.85rem; color: #16a34a;'>
+                    ✅ <strong>{inserted:,}</strong> cases saved to database (out of {total:,} total)
+                </div>
+                <div style='font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;'>
+                    Your data will persist across sessions and can be accessed from any device.
+                </div>
+            </div>
+        """
+            else:
+                # Failed storage
+                inserted = db_status.get('inserted', 0)
+                total = db_status.get('total', 0)
+                error_msg = db_status.get('error') or db_status.get('message', 'Database storage unavailable')
+                error_details = db_status.get('error_details', [])
+                
+                # Check if 0 cases were saved (critical error)
+                if inserted == 0 and total > 0:
+                    status_html += f"""
+            <div style='padding: 0.75rem; background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 6px; margin-top: 0.5rem;'>
+                <div style='font-size: 0.9rem; font-weight: 600; color: #dc2626; margin-bottom: 0.25rem;'>💾 Database Storage - CRITICAL ERROR</div>
+                <div style='font-size: 0.85rem; color: #dc2626; margin-bottom: 0.5rem;'>
+                    ❌ <strong>0 cases saved</strong> out of {total:,} total
+                </div>
+                <div style='font-size: 0.85rem; color: #991b1b; margin-bottom: 0.5rem; padding: 0.5rem; background: #fee2e2; border-radius: 4px;'>
+                    <strong>Error:</strong> {error_msg[:300]}{'...' if len(error_msg) > 300 else ''}
+                </div>
+                {"<div style='font-size: 0.8rem; color: #7f1d1d; margin-top: 0.5rem;'><strong>Possible causes:</strong><ul style='margin: 0.25rem 0; padding-left: 1.5rem;'><li>RLS (Row-Level Security) policy blocking inserts</li><li>Invalid user_id or user not authenticated properly</li><li>Database connection issue</li><li>Missing SUPABASE_SERVICE_KEY in environment</li></ul></div>" if error_details else ""}
+                <div style='font-size: 0.8rem; color: #64748b; margin-top: 0.5rem;'>
+                    ⚠️ Data is loaded in session memory only. It will be lost if you refresh the page.
+                </div>
+            </div>
+        """
+                else:
+                    # Other error (partial failure or different issue)
+                    status_html += f"""
+            <div style='padding: 0.75rem; background: #fefce8; border-left: 4px solid #eab308; border-radius: 6px; margin-top: 0.5rem;'>
+                <div style='font-size: 0.9rem; font-weight: 600; color: #a16207; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+                <div style='font-size: 0.85rem; color: #ca8a04;'>
+                    ⚠️ {error_msg}
+                </div>
+                <div style='font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;'>
+                    Data is loaded in session memory only. It will be lost if you refresh the page.
+                </div>
+            </div>
+        """
+        elif is_authenticated():
+            # Authenticated but no storage status yet - offer to save
+            status_html += """
+            <div style='padding: 0.75rem; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 6px; margin-top: 0.5rem;'>
+                <div style='font-size: 0.9rem; font-weight: 600; color: #1e40af; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+                <div style='font-size: 0.85rem; color: #2563eb;'>
+                    ℹ️ Database storage status unavailable. Data may need to be re-uploaded to save to database.
+                </div>
+            </div>
+        """
+        else:
+            # Not authenticated
+            status_html += """
+            <div style='padding: 0.75rem; background: #f8fafc; border-left: 4px solid #94a3b8; border-radius: 6px; margin-top: 0.5rem;'>
+                <div style='font-size: 0.9rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+                <div style='font-size: 0.85rem; color: #64748b;'>
+                    ℹ️ Data is loaded in session memory only. <a href="/Login" style="color: #3b82f6; text-decoration: underline;">Login</a> to save data to database for persistence.
+                </div>
+            </div>
+        """
+        
+        status_html += "</div>"
+        st.markdown(status_html, unsafe_allow_html=True)
         load_clicked = False
     elif loading_in_progress:
         # Loading is in progress - show status
@@ -934,13 +1015,65 @@ def render_upload_section():
                             
                             with st.spinner("💾 Storing data in database..."):
                                 result = store_pv_data(normalized, user_id, organization, source)
-                                if result.get("success"):
-                                    inserted = result.get('inserted', 0)
+                                inserted = result.get('inserted', 0)
+                                total = result.get('total', len(normalized))
+                                
+                                if result.get("success") and inserted > 0:
+                                    # Store database storage status in session state for display after rerun
+                                    st.session_state.db_storage_status = {
+                                        "success": True,
+                                        "inserted": inserted,
+                                        "total": total,
+                                        "message": f"✅ Data stored in database! {inserted:,} cases saved."
+                                    }
                                     st.success(f"✅ Data stored in database! {inserted:,} cases saved.")
+                                elif inserted == 0 and total > 0:
+                                    # Critical: 0 cases saved but we tried to save many
+                                    error_msg = result.get("error", "Unknown error - no cases were inserted")
+                                    error_details = result.get("error_details", [])
+                                    
+                                    st.session_state.db_storage_status = {
+                                        "success": False,
+                                        "inserted": 0,
+                                        "total": total,
+                                        "error": error_msg,
+                                        "error_details": error_details,
+                                        "message": f"⚠️ Database storage failed: {error_msg}"
+                                    }
+                                    st.error(f"❌ **Database Storage Failed:** {error_msg}")
+                                    if error_details:
+                                        with st.expander("📋 Error Details"):
+                                            for detail in error_details:
+                                                st.text(detail)
                                 else:
-                                    # Continue without database if it fails
-                                    st.info("ℹ️ Data loaded in session. Database storage unavailable.")
+                                    # Store failure status
+                                    error_msg = result.get("error", "Unknown error")
+                                    st.session_state.db_storage_status = {
+                                        "success": False,
+                                        "error": error_msg,
+                                        "inserted": inserted,
+                                        "total": total,
+                                        "message": f"⚠️ Database storage failed: {error_msg}"
+                                    }
+                                    st.warning(f"⚠️ Database storage partially failed: {error_msg}")
+                        else:
+                            # User object not available - clear any previous status
+                            st.session_state.db_storage_status = {
+                                "success": False,
+                                "error": "User profile not found",
+                                "message": "ℹ️ Data loaded in session only (not saved to database)."
+                            }
+                    else:
+                        # Not authenticated or no data - clear any previous status
+                        if 'db_storage_status' in st.session_state:
+                            del st.session_state.db_storage_status
                 except Exception as e:
+                    # Store error status
+                    st.session_state.db_storage_status = {
+                        "success": False,
+                        "error": str(e),
+                        "message": f"⚠️ Database storage failed: {str(e)[:100]}"
+                    }
                     # Continue without database storage if it fails
                     pass
                 
@@ -1263,25 +1396,6 @@ def render_upload_section():
                             hide_index=True,
                         )
                 st.markdown("</div>", unsafe_allow_html=True)
-
-                if mapping:
-                    with st.expander("Detected schema mapping", expanded=False):
-                        st.dataframe(
-                            pv_schema.get_schema_summary(mapping),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-                    # Optional manual override to support arbitrary vendor formats
-                    st.markdown(
-                        "If column detection is not perfect, you can manually remap "
-                        "your columns to the standard PV fields below."
-                    )
-                    manual_mapping = render_schema_mapper(raw_df, mapping)
-                    if manual_mapping:
-                        mapping = manual_mapping
-                        st.session_state.schema_mapping = mapping
-                        normalized = pv_schema.normalize_dataframe(raw_df, mapping)
-                        st.session_state.normalized_data = normalized
                 
                 # Loading completed successfully - prepare for rerun
                 st.session_state.show_results = False

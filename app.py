@@ -9,6 +9,13 @@ load_dotenv()
 
 import streamlit as st
 
+# Restore authentication session first, before anything else
+try:
+    from src.auth.auth import restore_session
+    restore_session()
+except Exception:
+    pass
+
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
 from src.auth.auth import is_authenticated

@@ -23,12 +23,20 @@ def _unique_strings(series: pd.Series, top_n: int = 5000) -> List[str]:
     return vals.unique().tolist()[:top_n]
 
 
-@st.cache_data
+# Cache for candidates to avoid repeated processing
+_candidates_cache: Dict[str, Tuple[List[str], List[str]]] = {}
+
 def _get_cached_candidates(normalized_df: pd.DataFrame) -> Tuple[List[str], List[str]]:
-    """Cache drug and reaction candidates for faster matching."""
-    drug_candidates = _unique_strings(normalized_df["drug_name"]) if "drug_name" in normalized_df else []
-    react_candidates = _unique_strings(normalized_df["reaction"]) if "reaction" in normalized_df else []
-    return drug_candidates, react_candidates
+    """Cache drug and reaction candidates for faster matching. Uses DataFrame ID as cache key."""
+    cache_key = f"{id(normalized_df)}"
+    
+    if cache_key not in _candidates_cache:
+        # Only process unique values, limit to top 1000 to avoid performance issues
+        drug_candidates = _unique_strings(normalized_df["drug_name"])[:1000] if "drug_name" in normalized_df else []
+        react_candidates = _unique_strings(normalized_df["reaction"])[:1000] if "reaction" in normalized_df else []
+        _candidates_cache[cache_key] = (drug_candidates, react_candidates)
+    
+    return _candidates_cache[cache_key]
 
 
 def suggest_query_corrections(

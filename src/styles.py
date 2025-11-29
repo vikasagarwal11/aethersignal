@@ -1342,7 +1342,174 @@ div[data-testid="stVerticalBlock"]:has(.block-card) {
     color: #9ca3af !important;
 }
 
+/* ============================================
+   HIDE LOGIN/REGISTER FROM SIDEBAR WHEN AUTHENTICATED
+   ============================================ */
+/* Hide Streamlit's automatic page navigation links for Login and Register when user is authenticated */
+/* This uses a data attribute we'll inject via JavaScript based on auth status */
+[data-testid="stSidebar"][data-auth-status="authenticated"] a[href*="Login"],
+[data-testid="stSidebar"][data-auth-status="authenticated"] a[href*="Register"],
+[data-testid="stSidebar"] [data-auth-status="authenticated"] ~ * a[href*="Login"],
+[data-testid="stSidebar"] [data-auth-status="authenticated"] ~ * a[href*="Register"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Hide Login/Register page links from Streamlit's sidebar navigation */
+/* Target based on link text content */
+[data-testid="stSidebar"] nav a:has-text("Login"),
+[data-testid="stSidebar"] nav a:has-text("Register") {
+    display: none !important;
+}
+
+/* Alternative: Hide by targeting sidebar nav links that contain "Login" or "Register" */
+[data-testid="stSidebar"] a[href*="/Login"],
+[data-testid="stSidebar"] a[href*="/Register"],
+[data-testid="stSidebar"] a[href*="Login.py"],
+[data-testid="stSidebar"] a[href*="Register.py"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Hide Streamlit page navigation links for Login and Register based on auth status */
+/* We'll use JavaScript to add a class to the sidebar based on auth status */
+.sidebar-auth-authenticated a[href*="/Login"],
+.sidebar-auth-authenticated a[href*="/Register"],
+.sidebar-auth-authenticated a[href*="Login"],
+.sidebar-auth-authenticated a[href*="Register"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 </style>
+
+<script>
+(function() {
+    // Hide Login/Register from Streamlit's page navigation when authenticated
+    function hideAuthPages() {
+        try {
+            const sidebar = document.querySelector('[data-testid="stSidebar"]');
+            if (!sidebar) return;
+            
+            // Check if user is authenticated - look for multiple indicators
+            const sidebarText = sidebar.innerText || sidebar.textContent || '';
+            const hasSignedInText = sidebarText.includes('Signed in as');
+            const hasEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}/.test(sidebarText);
+            const hasProfileButton = sidebar.querySelector('button[key="sidebar_profile"]') !== null;
+            
+            const isAuthenticated = hasSignedInText || hasEmail || hasProfileButton;
+            
+            if (isAuthenticated) {
+                // Add class to sidebar to enable CSS hiding
+                sidebar.classList.add('sidebar-auth-authenticated');
+                
+                // Find and hide all Login/Register links
+                const allLinks = sidebar.querySelectorAll('a');
+                allLinks.forEach(link => {
+                    const href = (link.getAttribute('href') || '').toLowerCase();
+                    const text = (link.textContent || link.innerText || '').trim();
+                    
+                    // Check if this is a Login or Register link
+                    const isLoginLink = href.includes('login') || text.toLowerCase() === 'login';
+                    const isRegisterLink = href.includes('register') || text.toLowerCase() === 'register';
+                    
+                    if (isLoginLink || isRegisterLink) {
+                        // Hide the link and its parent container if it's a list item
+                        link.style.display = 'none';
+                        link.style.visibility = 'hidden';
+                        link.style.height = '0';
+                        link.style.margin = '0';
+                        link.style.padding = '0';
+                        link.style.opacity = '0';
+                        
+                        // Hide parent list item if it exists
+                        const parentLi = link.closest('li');
+                        if (parentLi) {
+                            parentLi.style.display = 'none';
+                            parentLi.style.height = '0';
+                            parentLi.style.margin = '0';
+                            parentLi.style.padding = '0';
+                        }
+                        
+                        // Hide parent div if it's a navigation container
+                        const parentDiv = link.closest('div');
+                        if (parentDiv && (parentDiv.textContent || '').trim() === text) {
+                            parentDiv.style.display = 'none';
+                        }
+                    }
+                });
+            } else {
+                // Show Login/Register if not authenticated
+                sidebar.classList.remove('sidebar-auth-authenticated');
+                
+                // Restore visibility of links
+                const allLinks = sidebar.querySelectorAll('a');
+                allLinks.forEach(link => {
+                    const href = (link.getAttribute('href') || '').toLowerCase();
+                    if (href.includes('login') || href.includes('register')) {
+                        link.style.display = '';
+                        link.style.visibility = '';
+                        link.style.opacity = '';
+                        const parentLi = link.closest('li');
+                        if (parentLi) {
+                            parentLi.style.display = '';
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            // Silently fail
+        }
+    }
+    
+    // Run immediately and multiple times to catch different load states
+    hideAuthPages();
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', hideAuthPages);
+    }
+    
+    // Run after delays to catch dynamically loaded content
+    setTimeout(hideAuthPages, 300);
+    setTimeout(hideAuthPages, 800);
+    setTimeout(hideAuthPages, 1500);
+    
+    // Use MutationObserver to watch for sidebar changes
+    let observer;
+    function setupObserver() {
+        try {
+            const sidebar = document.querySelector('[data-testid="stSidebar"]');
+            if (sidebar && window.MutationObserver) {
+                if (observer) observer.disconnect();
+                
+                observer = new MutationObserver(() => {
+                    hideAuthPages();
+                });
+                
+                observer.observe(sidebar, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true
+                });
+            }
+        } catch (e) {
+            // Silently fail
+        }
+    }
+    
+    setTimeout(setupObserver, 500);
+    setTimeout(setupObserver, 1500);
+    
+    // Also check periodically (in case observer misses something)
+    setInterval(hideAuthPages, 2000);
+})();
+</script>
 """
 
 

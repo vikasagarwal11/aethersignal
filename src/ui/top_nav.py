@@ -19,14 +19,13 @@ def render_top_nav() -> None:
         
         # Generate auth buttons HTML
         if is_auth and user:
-            # Show user menu
+            # Show user menu with email first, then Profile/Logout
             user_email = user.get('email', 'User')
-            user_org = user.get('organization', '')
             auth_buttons_html = f'''
                 <div class="nav-user-menu" style="display: flex; align-items: center; gap: 1rem; margin-left: 1rem;">
-                    <span style="color: #94a3b8; font-size: 0.9rem;">{user_org or user_email}</span>
-                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'profile'}}, '*'); return false;" style="font-size: 0.9rem;">?? Profile</a>
-                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'logout'}}, '*'); return false;" style="font-size: 0.9rem;">?? Logout</a>
+                    <span style="color: #94a3b8; font-size: 0.9rem;">{user_email}</span>
+                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'profile'}}, '*'); return false;" style="font-size: 0.9rem;">👤 Profile</a>
+                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'logout'}}, '*'); return false;" style="font-size: 0.9rem;">🚪 Logout</a>
                 </div>
             '''
         else:

@@ -27,7 +27,14 @@ except ImportError:
 
 
 def initialize_session():
-    """Initialize session state with default values."""
+    """Initialize session state with default values and restore auth if needed."""
+    # First, try to restore authentication session
+    try:
+        from src.auth.auth import restore_session
+        restore_session()
+    except Exception:
+        pass
+    
     DEFAULT_SESSION_KEYS = {
         "data": None,
         "schema_mapping": {},
@@ -46,6 +53,9 @@ def initialize_session():
     for key, default in DEFAULT_SESSION_KEYS.items():
         if key not in st.session_state:
             st.session_state[key] = default
+    
+    # IMPORTANT: Don't clear auth state keys - they should persist across pages
+    # Only initialize non-auth defaults
 
 
 def load_all_files(uploaded_files, progress_callback=None) -> Optional[pd.DataFrame]:
