@@ -88,9 +88,3 @@ def render_trends():
     
     st.plotly_chart(fig, use_container_width=True)
 
-
-def get_theme_colors():
-    """Get theme colors."""
-    from src.ui.layout.theme import get_theme_colors
-    return get_theme_colors()
-
