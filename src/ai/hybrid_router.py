@@ -125,3 +125,88 @@ def _has_valid_filters(filters: Dict) -> bool:
     meaningful_keys = ['drug', 'reaction', 'age_min', 'age_max', 'sex', 'country', 'seriousness', 'date_from', 'date_to']
     return any(k in filters for k in meaningful_keys)
 
+
+def run_hybrid_rpf(
+    df: pd.DataFrame,
+    weights: Optional[Dict[str, float]] = None,
+    mode: str = "auto"
+) -> List[Dict[str, Any]]:
+    """
+    Run hybrid RPF (Risk Prioritization Framework) calculation.
+    
+    Automatically selects local or server engine based on:
+    - Dataset size
+    - Browser capabilities
+    - User preference
+    
+    Args:
+        df: Safety data DataFrame
+        weights: RPF component weights (optional)
+        mode: Processing mode ("auto", "local", "server")
+        
+    Returns:
+        List of RPF results sorted by score
+    """
+    try:
+        # Local engine
+        if mode == "local":
+            from src.local_engine.local_rpf_engine import LocalRPFEngine
+            engine = LocalRPFEngine(weights)
+            return engine.compute(df)
+        
+        # Server engine
+        if mode == "server":
+            try:
+                from src.ai.risk_prioritization import RiskPrioritizationEngine
+                engine = RiskPrioritizationEngine()
+                # Convert server engine format if needed
+                return engine.compute_rpf_scores(df, weights)
+            except Exception:
+                # Fallback to local if server unavailable
+                from src.local_engine.local_rpf_engine import LocalRPFEngine
+                engine = LocalRPFEngine(weights)
+                return engine.compute(df)
+        
+        # AUTO MODE - intelligent selection
+        try:
+            import streamlit as st
+            
+            # Check browser capabilities
+            browser_caps = st.session_state.get("browser_capabilities", {})
+            wasm_available = browser_caps.get("wasm_supported", False) if isinstance(browser_caps, dict) else False
+            
+            # Check dataset profile
+            dataset_profile = st.session_state.get("dataset_profile", {})
+            size_mb = dataset_profile.get("file_size_mb", 0) if isinstance(dataset_profile, dict) else 0
+            
+            # Decision: use local if WASM available and dataset < 150MB
+            if wasm_available and size_mb <= 150 and len(df) < 2_000_000:
+                from src.local_engine.local_rpf_engine import LocalRPFEngine
+                engine = LocalRPFEngine(weights)
+                return engine.compute(df)
+            else:
+                # Use server engine
+                try:
+                    from src.ai.risk_prioritization import RiskPrioritizationEngine
+                    engine = RiskPrioritizationEngine()
+                    return engine.compute_rpf_scores(df, weights)
+                except Exception:
+                    # Fallback to local
+                    from src.local_engine.local_rpf_engine import LocalRPFEngine
+                    engine = LocalRPFEngine(weights)
+                    return engine.compute(df)
+        except Exception:
+            # Safe fallback to local
+            from src.local_engine.local_rpf_engine import LocalRPFEngine
+            engine = LocalRPFEngine(weights)
+            return engine.compute(df)
+            
+    except Exception as e:
+        # Ultimate fallback
+        return [{
+            "error": str(e),
+            "drug": "Error",
+            "reaction": "Error",
+            "rpf": 0.0,
+            "priority": "Unknown"
+        }]

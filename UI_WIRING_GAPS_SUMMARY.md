@@ -1,0 +1,26 @@
+# 🔌 UI Wiring Gaps - Quick Summary
+
+## ✅ **Already Wired:**
+- Portfolio Intelligence Panel (via portfolio_intelligence_panel.py) ✅
+- RPF Panel ✅
+- Trend Alerts ✅
+- Benefit-Risk ✅
+- Inspector Q&A ✅
+- Governance ✅
+- All other tabs in results_display.py ✅
+
+## ❌ **Missing from UI:**
+1. **Case Clustering Panel** - exists but not in tabs
+2. **Duplicate Detection Panel** - exists but not in tabs
+3. **Executive Dashboard** - completely missing from UI
+4. **Portfolio Trend Visualizer** - separate panel not used (portfolio_intelligence_panel used instead)
+
+## 🔧 **Quick Fix Needed:**
+Add these panels to `src/ui/results_display.py` tabs or create separate access points.
+
+**BUT** - Since you want to proceed with Portfolio Predictor Engine first, I'll:
+1. ✅ Build Portfolio Predictor Engine NOW
+2. ✅ Wire everything together in final UI integration pass
+
+Proceeding with Portfolio Predictor Engine as requested...
+

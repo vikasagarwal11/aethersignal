@@ -12,6 +12,14 @@ from src import pv_schema
 from src import signal_stats
 from src import mapping_templates
 from src.app_helpers import cached_detect_and_normalize, load_all_files
+from src.app_processing_mode import (
+    ProcessingMode,
+    recommend_mode_based_on_file_size,
+    set_processing_mode,
+    browser_supports_local_processing,
+    get_processing_mode,
+    get_processing_mode_reason
+)
 from src.ui.schema_mapper import render_schema_mapper
 
 
@@ -51,6 +59,53 @@ def render_upload_section():
             "📦 Large files (>200MB) are supported."
         ),
     )
+    
+    # --------------------------
+    # Processing Mode Selection (CHUNK 7.1)
+    # --------------------------
+    if uploaded_files:
+        # Calculate total file size
+        total_size_bytes = sum(f.size for f in uploaded_files)
+        total_size_mb = total_size_bytes / (1024 * 1024)
+        
+        # Get recommended mode based on file size
+        recommended_mode, reason = recommend_mode_based_on_file_size(total_size_mb)
+        
+        # Check browser capability
+        if not browser_supports_local_processing() and recommended_mode != ProcessingMode.SERVER:
+            recommended_mode = ProcessingMode.SERVER
+            reason = "Local processing not supported in this browser. Using server mode."
+        
+        # Set recommended mode if not already set or if user hasn't overridden
+        if not st.session_state.get("processing_mode_override", False):
+            set_processing_mode(recommended_mode, reason)
+        
+        # Display recommended mode info
+        mode_icon = "🖥️" if recommended_mode == ProcessingMode.SERVER else "💻" if recommended_mode == ProcessingMode.LOCAL else "🔄"
+        st.info(f"{mode_icon} **Recommended Processing Mode: {recommended_mode.upper()}**\n\n_{reason}_")
+        
+        # Manual override toggle
+        with st.expander("⚙️ Advanced: Choose Processing Mode", expanded=False):
+            current_mode = get_processing_mode()
+            mode_index = ["server", "local", "hybrid"].index(current_mode) if current_mode in ["server", "local", "hybrid"] else 0
+            
+            chosen = st.radio(
+                "Choose processing mode:",
+                (
+                    ProcessingMode.SERVER,
+                    ProcessingMode.LOCAL,
+                    ProcessingMode.HYBRID
+                ),
+                index=mode_index,
+                help="Server = safest. Local = fastest for large files. Hybrid = best for medium files."
+            )
+            
+            if chosen != current_mode:
+                set_processing_mode(chosen, "User override")
+                st.session_state.processing_mode_override = True
+                st.success(f"Processing mode set to: **{chosen.upper()}**")
+        
+        st.caption("ℹ️ Server = safest. Local = fastest for large files. Hybrid = best for medium files. (Local/Hybrid modes require Pyodide - coming in CHUNK 7.2+)")
     
     # Add upload progress tracking JavaScript only when data is not fully loaded
     if not st.session_state.get("data_loaded_successfully", False):

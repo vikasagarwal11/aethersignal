@@ -8,6 +8,8 @@ import pandas as pd
 from typing import Optional, Dict, List, Any
 import streamlit as st
 from datetime import datetime
+import math
+import json
 
 try:
     from supabase import create_client, Client
@@ -15,6 +17,30 @@ try:
 except ImportError:
     SUPABASE_AVAILABLE = False
     Client = None
+
+
+def _clean_for_json(obj: Any) -> Any:
+    """
+    Recursively clean dict/list to remove NaN and Inf values for JSON compliance.
+    
+    Args:
+        obj: Object to clean (dict, list, or primitive)
+        
+    Returns:
+        Cleaned object with NaN/Inf replaced by None
+    """
+    if isinstance(obj, dict):
+        return {k: _clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_for_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None  # Convert NaN/Inf to None (JSON-compliant)
+        return obj
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 
 def get_supabase_db(use_service_key: bool = True) -> Optional[Client]:
@@ -118,7 +144,7 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
                 "report_date": str(row.get("report_date", ""))[:10] if pd.notna(row.get("report_date")) else None,
                 "receive_date": str(row.get("receive_date", ""))[:10] if pd.notna(row.get("receive_date")) else None,
                 "outcome": str(row.get("outcome", "")),
-                "raw_data": row.to_dict()  # Store original row as JSON
+                "raw_data": _clean_for_json(row.to_dict())  # Store original row as JSON (NaN cleaned)
             }
             records.append(record)
         

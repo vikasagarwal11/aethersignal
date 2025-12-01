@@ -10,7 +10,7 @@ regions in feature space.
 
 from __future__ import annotations
 
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -176,9 +176,13 @@ def cluster_cases_for_signal(
     reaction: str,
     min_cases: int = 20,
     k: int = 3,
+    use_quantum: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """
     Cluster cases for a specific drug–reaction pair into k clusters.
+    
+    Automatically uses Qiskit quantum clustering if available, otherwise
+    falls back to quantum-inspired classical clustering.
 
     Args:
         df: normalized dataframe
@@ -186,6 +190,7 @@ def cluster_cases_for_signal(
         reaction: reaction term
         min_cases: minimum cases required for clustering
         k: number of clusters
+        use_quantum: Whether to attempt quantum (None = auto-detect)
 
     Returns:
         List of cluster dicts with:
@@ -194,7 +199,31 @@ def cluster_cases_for_signal(
             - mean_age
             - serious_pct
             - male_pct / female_pct
+            - method: "quantum" or "classical"
     """
+    # Try to use Qiskit quantum clustering if available
+    try:
+        from src.quantum.qiskit_clustering import qiskit_cluster_cases_for_signal
+        from src.quantum.config import get_config
+        
+        # Auto-detect quantum usage if not specified
+        if use_quantum is None:
+            config = get_config()
+            subset_size = len(df[
+                df["drug_name"].astype(str).str.contains(str(drug), case=False, na=False)
+                & df["reaction"].astype(str).str.contains(str(reaction), case=False, na=False)
+            ]) if "drug_name" in df.columns and "reaction" in df.columns else 0
+            use_quantum = config.is_framework_enabled("qiskit") and config.should_use_quantum(subset_size, "clustering")
+        
+        # Try Qiskit version
+        if use_quantum:
+            return qiskit_cluster_cases_for_signal(df, drug, reaction, min_cases, k, use_quantum=True)
+    except (ImportError, Exception) as e:
+        # Fall back to classical if Qiskit not available or fails
+        import logging
+        logger = logging.getLogger(__name__)
+        if use_quantum:  # Only log if quantum was requested
+            logger.debug(f"Qiskit clustering not available, using classical: {e}")
     if "drug_name" not in df.columns or "reaction" not in df.columns:
         return []
 

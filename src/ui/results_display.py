@@ -65,6 +65,9 @@ from src.quantum_duplicate_detection import (
     compare_classical_vs_quantum_duplicates
 )
 from src.utils import normalize_text, safe_divide
+from src.ui.benefit_risk_visuals import render_benefit_risk_tab
+from src.ui.qsp_panel import render_qsp_tab
+from src.ui.inspector_qa_panel import render_inspector_qa_tab
 
 
 def _log_perf_event(label: str, duration: float, extra: Optional[Dict] = None) -> None:
@@ -281,12 +284,12 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     # Add conversational response tab if LLM is enabled
     use_llm = st.session_state.get("use_llm", False)
     if use_llm:
-        overview_tab, conversational_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
-            ["📊 Overview", "💬 Conversational", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]
+        overview_tab, conversational_tab, signals_tab, trends_tab, trend_alerts_tab, rpf_tab, benefit_risk_tab, qsp_tab, inspector_qa_tab, portfolio_tab, cases_tab, report_tab, sar_tab, dsur_pbrer_tab, capa_tab, inspection_tab, csp_tab, label_impact_tab, governance_tab = st.tabs(
+            ["📊 Overview", "💬 Conversational", "⚛️ Signals", "📅 Time & Co-reactions", "⚠️ Trend Alerts", "📊 RPF", "📊 Benefit–Risk", "🔥 QSP Prioritization", "🔍 Inspector Q&A", "📊 Portfolio Intelligence", "📋 Cases", "📄 Report", "📄 SAR Report", "📘 DSUR / 📙 PBRER", "🛠️ CAPA", "📑 Inspection", "🧬 CSP", "📄 Label Impact", "🛡️ Governance"]
         )
     else:
-        overview_tab, signals_tab, trends_tab, cases_tab, report_tab = st.tabs(
-            ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "📋 Cases", "📄 Report"]
+        overview_tab, signals_tab, trends_tab, trend_alerts_tab, rpf_tab, benefit_risk_tab, qsp_tab, inspector_qa_tab, portfolio_tab, cases_tab, report_tab, sar_tab, dsur_pbrer_tab, capa_tab, inspection_tab, csp_tab, label_impact_tab, governance_tab = st.tabs(
+            ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "⚠️ Trend Alerts", "📊 RPF", "📊 Benefit–Risk", "🔥 QSP Prioritization", "🔍 Inspector Q&A", "📊 Portfolio Intelligence", "📋 Cases", "📄 Report", "📄 SAR Report", "📘 DSUR / 📙 PBRER", "🛠️ CAPA", "📑 Inspection", "🧬 CSP", "📄 Label Impact", "🛡️ Governance"]
         )
         conversational_tab = None  # Not available
 
@@ -307,6 +310,72 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     with trends_tab:
         _render_trends_tab(filters, summary, filtered_df)
 
+    # ---------------- Trend Alerts Tab (CHUNK 6.11-C: Option E) ----------------
+    with trend_alerts_tab:
+        from src.ui.trend_alerts_panel import render_trend_alerts_tab
+        render_trend_alerts_tab(normalized_df)
+
+    # ---------------- RPF Tab (CHUNK A - Local RPF) ----------------
+    with rpf_tab:
+        from src.ui.rpf_panel import render_rpf_panel
+        render_rpf_panel(normalized_df)
+
+    # ---------------- Benefit–Risk Tab (CHUNK 6.21.1 - Part 21) ----------------
+    with benefit_risk_tab:
+        render_benefit_risk_tab(normalized_df, mode="heavy")
+
+    # ---------------- QSP Prioritization Tab (CHUNK 6.21.1 - Part 22) ----------------
+    with qsp_tab:
+        render_qsp_tab(normalized_df)
+
+    # ---------------- Inspector Q&A Tab (CHUNK 6.21.1 - Part 24) ----------------
+    with inspector_qa_tab:
+        # Extract signals from results if available
+        signals = None
+        if summary and summary.get("signals"):
+            signals = summary.get("signals")
+        elif filtered_df is not None and not filtered_df.empty:
+            # Try to extract signals from filtered results
+            signals = None  # Will be extracted in the panel
+        
+        render_inspector_qa_tab(signals=signals, governance_package=None, df=normalized_df)
+
+    # ---------------- Portfolio Intelligence Tab (CHUNK A9.2) ----------------
+    with portfolio_tab:
+        try:
+            from src.ui.portfolio_intelligence_panel import render_portfolio_intelligence_panel
+            
+            # Extract signals from summary if available
+            signals_list = None
+            if summary and summary.get("signals"):
+                signals_list = summary.get("signals")
+            
+            # Get trend alerts if available
+            trend_alerts_list = None
+            if st.session_state.get("trend_alerts"):
+                trend_alerts_list = st.session_state.get("trend_alerts")
+                if isinstance(trend_alerts_list, dict) and trend_alerts_list.get("alerts"):
+                    trend_alerts_list = trend_alerts_list.get("alerts")
+            
+            # Get medical LLM if available
+            medical_llm = None
+            try:
+                from src.ai.medical_llm import call_medical_llm
+                medical_llm = call_medical_llm
+            except ImportError:
+                pass
+            
+            render_portfolio_intelligence_panel(
+                normalized_df=normalized_df,
+                signals=signals_list,
+                trend_alerts=trend_alerts_list,
+                medical_llm=medical_llm
+            )
+        except ImportError:
+            st.info("Portfolio Intelligence panel not yet available. Coming in future update.")
+        except Exception as e:
+            st.error(f"Error loading Portfolio Intelligence: {str(e)}")
+
     # ---------------- Cases Tab ----------------
     with cases_tab:
         _render_cases_tab(filtered_df, normalized_df, summary)
@@ -314,6 +383,58 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     # ---------------- Report Tab ----------------
     with report_tab:
         _render_report_tab(filters, query_text, summary, source)
+    
+    # ---------------- SAR Report Tab (CHUNK 6.13) ----------------
+    with sar_tab:
+        from src.ui.sar_panel import render_sar_panel
+        render_sar_panel()
+    
+    # ---------------- DSUR / PBRER Tab (CHUNK 6.14) ----------------
+    with dsur_pbrer_tab:
+        from src.ui.dsur_pbrer_panel import render_dsur_pbrer_panel
+        
+        # Check which report type to show (default to DSUR if both exist, show both if available)
+        has_dsur = "dsur_report" in st.session_state
+        has_pbrer = "pbrer_report" in st.session_state
+        
+        if has_dsur and has_pbrer:
+            # Show both with tabs
+            dsur_subtab, pbrer_subtab = st.tabs(["📘 DSUR", "📙 PBRER"])
+            with dsur_subtab:
+                render_dsur_pbrer_panel(st.session_state.get("dsur_report"), "DSUR")
+            with pbrer_subtab:
+                render_dsur_pbrer_panel(st.session_state.get("pbrer_report"), "PBRER")
+        elif has_dsur:
+            render_dsur_pbrer_panel(st.session_state.get("dsur_report"), "DSUR")
+        elif has_pbrer:
+            render_dsur_pbrer_panel(st.session_state.get("pbrer_report"), "PBRER")
+        else:
+            render_dsur_pbrer_panel(None, "DSUR")
+    
+    # ---------------- CAPA Recommendations Tab (CHUNK 6.15) ----------------
+    with capa_tab:
+        from src.ui.capa_panel import render_capa_panel
+        render_capa_panel()
+    
+    # ---------------- Inspection Readiness Tab (CHUNK 6.16) ----------------
+    with inspection_tab:
+        from src.ui.inspection_readiness_panel import render_inspection_readiness_panel
+        render_inspection_readiness_panel()
+    
+    # ---------------- Core Safety Profile (CSP) Tab (CHUNK 6.18) ----------------
+    with csp_tab:
+        from src.ui.csp_panel import render_csp_panel
+        render_csp_panel()
+    
+    # ---------------- Label Impact Assessment Tab (CHUNK 6.19) ----------------
+    with label_impact_tab:
+        from src.ui.label_impact_panel import render_label_impact_panel
+        render_label_impact_panel()
+    
+    # ---------------- Signal Governance Dashboard Tab (CHUNK 6.20) ----------------
+    with governance_tab:
+        from src.ui.signal_governance_dashboard import render_signal_governance_dashboard
+        render_signal_governance_dashboard()
 
 
 def _render_overview_tab(filters: Dict, source_label: str, summary: Dict, 

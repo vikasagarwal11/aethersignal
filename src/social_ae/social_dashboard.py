@@ -7,15 +7,19 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
 from typing import List
+import plotly.express as px
+import plotly.graph_objects as go
 
 from .social_fetcher import fetch_daily_social_posts
 from .social_cleaner import clean_and_normalize_posts
 from .social_mapper import extract_reactions_from_posts, get_reaction_summary, normalize_to_meddra
 from .social_anonymizer import anonymize_posts
+from .social_severity import calculate_severity_for_posts
 from .social_ae_storage import store_posts, get_posts, get_statistics, init_database
 from .social_storage import store_social_records, load_recent_social, get_social_statistics
 from .social_ae_scheduler import run_daily_pull, DEFAULT_DRUG_WATCHLIST
 from src.literature_integration import enrich_signal_with_literature
+from src.ai.timeseries_engine import TimeSeriesEngine
 
 
 def render_social_ae_module():
@@ -69,15 +73,18 @@ def render_social_ae_module():
         st.session_state.social_ae_drug_terms = drug_terms
     
     # Tabs for different views
-    tab1, tab2, tab3 = st.tabs(["🔍 Fetch & View", "📊 Database", "⚙️ Automation"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Fetch & View", "📈 Trends", "📊 Database", "⚙️ Automation"])
     
     with tab1:
         render_fetch_tab(drug_terms, days_back, platforms)
     
     with tab2:
-        render_database_tab()
+        render_trends_tab()
     
     with tab3:
+        render_database_tab()
+    
+    with tab4:
         render_automation_tab()
 
 
@@ -138,8 +145,11 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
                     st.warning("All posts were filtered out as spam/low quality. Try different keywords.")
                     return
                 
-                # Extract reactions with confidence scores
-                df_with_reactions = extract_reactions_from_posts(cleaned_df, include_confidence=True)
+                # Extract reactions with confidence scores (multi-AE mode enabled)
+                df_with_reactions = extract_reactions_from_posts(cleaned_df, include_confidence=True, multi_ae=True)
+                
+                # Calculate severity scores
+                df_with_reactions = calculate_severity_for_posts(df_with_reactions, reactions_col="reactions")
                 
                 # Anonymize if enabled
                 if anonymize:
@@ -203,15 +213,31 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
             unique_drugs = df["drug_match"].nunique() if "drug_match" in df.columns else 0
             st.metric("Drugs mentioned", unique_drugs)
         with col4:
-            unique_reactions = df["reaction"].nunique() if "reaction" in df.columns else 0
+            if "reactions" in df.columns:
+                # Multi-AE mode: count unique reactions across all posts
+                all_reactions = []
+                for reactions_list in df["reactions"]:
+                    if isinstance(reactions_list, list):
+                        all_reactions.extend(reactions_list)
+                unique_reactions = len(set(all_reactions)) if all_reactions else 0
+            else:
+                unique_reactions = df["reaction"].nunique() if "reaction" in df.columns else 0
             st.metric("Reactions detected", unique_reactions)
         
-        # Reaction summary
-        if "reaction" in df.columns and df["reaction"].notna().any():
+        # Reaction summary (supports both single and multi-AE modes)
+        has_reactions = False
+        if "reactions" in df.columns:
+            # Multi-AE mode
+            has_reactions = df["reactions"].apply(lambda x: len(x) > 0 if isinstance(x, list) else False).any()
+        elif "reaction" in df.columns:
+            # Single-AE mode (backward compatibility)
+            has_reactions = df["reaction"].notna().any()
+        
+        if has_reactions:
             st.markdown("---")
             st.markdown("#### 📊 Detected Reactions")
             
-            reaction_summary = get_reaction_summary(df)
+            reaction_summary = get_reaction_summary(df, multi_ae=("reactions" in df.columns))
             if reaction_summary:
                 reaction_df = pd.DataFrame(
                     list(reaction_summary.items()),
@@ -224,6 +250,10 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
                 reaction_df["MedDRA PT"] = reaction_df["Reaction"].apply(normalize_to_meddra)
                 with st.expander("🔬 View with MedDRA mappings", expanded=False):
                     st.dataframe(reaction_df, use_container_width=True, hide_index=True)
+                
+                # Show multi-AE stats if available
+                if "reaction_count" in df.columns:
+                    st.caption(f"📈 Posts with multiple reactions: {(df['reaction_count'] > 1).sum()} ({(df['reaction_count'] > 1).sum() / len(df) * 100:.1f}%)")
                 
                 # Literature validation for top reactions
                 if len(reaction_df) > 0:
@@ -364,18 +394,27 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
             st.caption(f"Showing {len(filtered_df)} posts matching '{search_text}'")
         
         # Display posts table
-        display_columns = ["text", "reaction", "confidence_score", "confidence_level", "platform", "drug_match", "created_date"]
+        display_columns = ["text", "reactions", "reaction", "reaction_count", "confidence_score", "confidence_level", "platform", "drug_match", "created_date"]
         available_columns = [col for col in display_columns if col in filtered_df.columns]
         
-        if available_columns:
-            # Limit display columns for readability
-            display_df = filtered_df[available_columns].copy()
-            
-            # Truncate long text
-            if "text" in display_df.columns:
-                display_df["text"] = display_df["text"].apply(
-                    lambda x: x[:200] + "..." if isinstance(x, str) and len(x) > 200 else x
-                )
+        # Format reactions column for display
+        if "reactions" in filtered_df.columns:
+            display_df = filtered_df.copy()
+            display_df["reactions"] = display_df["reactions"].apply(
+                lambda x: ", ".join(x) if isinstance(x, list) and x else (x if pd.notna(x) else "None")
+            )
+        else:
+            display_df = filtered_df.copy()
+        
+            if available_columns:
+                # Limit display columns for readability
+                display_df = display_df[available_columns].copy()
+                
+                # Truncate long text
+                if "text" in display_df.columns:
+                    display_df["text"] = display_df["text"].apply(
+                        lambda x: x[:200] + "..." if isinstance(x, str) and len(x) > 200 else x
+                    )
             
             st.dataframe(
                 display_df,
@@ -441,6 +480,246 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
                 st.session_state.social_ae_fetched_at = datetime.now().isoformat()
                 st.success(f"✅ Loaded {len(df_from_db)} posts from database")
                 st.rerun()
+
+
+def render_trends_tab():
+    """Render the trends and time-series analysis tab."""
+    st.markdown("#### 📈 Social AE Trends & Time-Series Analysis")
+    st.caption("View trends over time for posts, reactions, and signals")
+    
+    # Load data from session state or database
+    if "social_ae_data" in st.session_state and not st.session_state.social_ae_data.empty:
+        df = st.session_state.social_ae_data
+    else:
+        # Try to load from database
+        try:
+            df = load_recent_social(days=30)
+            if df.empty:
+                df = get_posts(days_back=30, limit=5000)
+        except Exception:
+            df = get_posts(days_back=30, limit=5000)
+    
+    if df.empty:
+        st.info("💡 No data available. Fetch posts in the 'Fetch & View' tab or load from database.")
+        return
+    
+    # Check if we have date column
+    date_col = None
+    for col in ["created_date", "created_utc", "date", "timestamp"]:
+        if col in df.columns:
+            date_col = col
+            break
+    
+    if not date_col:
+        st.warning("⚠️ No date column found. Cannot generate trends.")
+        return
+    
+    # Convert date column
+    try:
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        df = df.dropna(subset=[date_col])
+    except Exception as e:
+        st.error(f"Error parsing dates: {str(e)}")
+        return
+    
+    if df.empty:
+        st.warning("⚠️ No valid dates found after parsing.")
+        return
+    
+    # Filter options
+    st.markdown("---")
+    filter_col1, filter_col2 = st.columns(2)
+    
+    with filter_col1:
+        if "drug_match" in df.columns:
+            selected_drugs = st.multiselect(
+                "Filter by Drug",
+                options=sorted(df["drug_match"].unique().tolist()),
+                default=[],
+                key="trends_drug_filter"
+            )
+        else:
+            selected_drugs = []
+    
+    with filter_col2:
+        if "reaction" in df.columns:
+            selected_reactions = st.multiselect(
+                "Filter by Reaction",
+                options=sorted(df["reaction"].dropna().unique().tolist()),
+                default=[],
+                key="trends_reaction_filter"
+            )
+        else:
+            selected_reactions = []
+    
+    # Apply filters
+    filtered_df = df.copy()
+    if selected_drugs and "drug_match" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["drug_match"].isin(selected_drugs)]
+    if selected_reactions and "reaction" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["reaction"].isin(selected_reactions)]
+    
+    # Time aggregation options
+    st.markdown("---")
+    agg_period = st.radio(
+        "Time Period",
+        options=["Daily", "Weekly", "Monthly"],
+        horizontal=True,
+        key="trends_agg_period"
+    )
+    
+    # Aggregate by time period
+    if agg_period == "Daily":
+        filtered_df["period"] = filtered_df[date_col].dt.date
+        period_label = "Day"
+    elif agg_period == "Weekly":
+        filtered_df["period"] = filtered_df[date_col].dt.to_period("W").astype(str)
+        period_label = "Week"
+    else:  # Monthly
+        filtered_df["period"] = filtered_df[date_col].dt.to_period("M").astype(str)
+        period_label = "Month"
+    
+    # Create trend data
+    trend_data = filtered_df.groupby("period").size().reset_index(name="count")
+    trend_data = trend_data.sort_values("period")
+    
+    if trend_data.empty:
+        st.warning("No data available for selected filters.")
+        return
+    
+    # Plot trendline
+    st.markdown(f"### 📊 Posts Over Time ({agg_period})")
+    
+    fig = px.line(
+        trend_data,
+        x="period",
+        y="count",
+        markers=True,
+        color_discrete_sequence=["#2563eb"],
+        labels={"period": period_label, "count": "Number of Posts"}
+    )
+    fig.update_layout(
+        xaxis_title=period_label,
+        yaxis_title="Posts",
+        height=400,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis_tickangle=-45 if agg_period != "Daily" else 0
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Time-series analysis using TimeSeriesEngine
+    if len(trend_data) >= 3:
+        st.markdown("---")
+        st.markdown("### 🔬 Time-Series Analysis")
+        
+        # Convert to Series for TimeSeriesEngine
+        series = pd.Series(trend_data["count"].values, index=range(len(trend_data)))
+        
+        ts_engine = TimeSeriesEngine()
+        
+        # Moving average
+        ma = ts_engine.compute_ma(series, window=3)
+        trend_data["ma_3"] = ma.values
+        
+        # EWMA
+        ewma = ts_engine.compute_ewma(series, alpha=0.3)
+        trend_data["ewma"] = ewma.values
+        
+        # Plot with moving averages
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(
+            x=trend_data["period"],
+            y=trend_data["count"],
+            mode='lines+markers',
+            name='Observed',
+            line=dict(color='#2563eb', width=2)
+        ))
+        fig2.add_trace(go.Scatter(
+            x=trend_data["period"],
+            y=trend_data["ma_3"],
+            mode='lines',
+            name='Moving Average (3)',
+            line=dict(color='#10b981', width=2, dash='dash')
+        ))
+        fig2.add_trace(go.Scatter(
+            x=trend_data["period"],
+            y=trend_data["ewma"],
+            mode='lines',
+            name='EWMA (α=0.3)',
+            line=dict(color='#f59e0b', width=2, dash='dot')
+        ))
+        fig2.update_layout(
+            xaxis_title=period_label,
+            yaxis_title="Posts",
+            height=400,
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            xaxis_tickangle=-45 if agg_period != "Daily" else 0,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # Anomaly detection
+        if len(trend_data) >= 4:
+            try:
+                anomalies = ts_engine.detect_anomalies(series, method="zscore", threshold=2.0)
+                if anomalies:
+                    st.markdown("**🚨 Detected Anomalies:**")
+                    anomaly_periods = [trend_data.iloc[idx]["period"] for idx in anomalies]
+                    anomaly_counts = [trend_data.iloc[idx]["count"] for idx in anomalies]
+                    anomaly_df = pd.DataFrame({
+                        period_label: anomaly_periods,
+                        "Count": anomaly_counts
+                    })
+                    st.dataframe(anomaly_df, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.caption(f"Anomaly detection unavailable: {str(e)}")
+    
+    # Reaction trends
+    if "reaction" in filtered_df.columns and filtered_df["reaction"].notna().any():
+        st.markdown("---")
+        st.markdown("### 📊 Reaction Trends")
+        
+        reaction_trends = filtered_df.groupby(["period", "reaction"]).size().reset_index(name="count")
+        top_reactions = filtered_df["reaction"].value_counts().head(5).index.tolist()
+        reaction_trends_filtered = reaction_trends[reaction_trends["reaction"].isin(top_reactions)]
+        
+        if not reaction_trends_filtered.empty:
+            fig3 = px.line(
+                reaction_trends_filtered,
+                x="period",
+                y="count",
+                color="reaction",
+                markers=True,
+                labels={"period": period_label, "count": "Count", "reaction": "Reaction"}
+            )
+            fig3.update_layout(
+                xaxis_title=period_label,
+                yaxis_title="Count",
+                height=400,
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                xaxis_tickangle=-45 if agg_period != "Daily" else 0
+            )
+            st.plotly_chart(fig3, use_container_width=True)
+    
+    # Summary metrics
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Posts", len(filtered_df))
+    with col2:
+        latest_count = trend_data.iloc[-1]["count"] if not trend_data.empty else 0
+        prev_count = trend_data.iloc[-2]["count"] if len(trend_data) >= 2 else 0
+        delta = latest_count - prev_count if prev_count > 0 else 0
+        st.metric("Latest Period", int(latest_count), delta=f"{delta:+}")
+    with col3:
+        avg_count = trend_data["count"].mean() if not trend_data.empty else 0
+        st.metric("Average", f"{avg_count:.1f}")
+    with col4:
+        max_count = trend_data["count"].max() if not trend_data.empty else 0
+        st.metric("Peak", int(max_count))
 
 
 def render_database_tab():

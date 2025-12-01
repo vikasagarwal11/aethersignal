@@ -9,6 +9,11 @@ plotly==5.22.0
 openpyxl==3.1.5
 fpdf2==2.8.5
 pennylane==0.38.0
+# Quantum Computing Frameworks (optional - for advanced quantum features)
+qiskit>=0.45.0
+qiskit-aer>=0.13.0
+qiskit-machine-learning>=0.7.0
+openqaoa>=0.2.0
 pdfplumber==0.11.4
 requests==2.31.0
 supabase==2.0.0
@@ -27,3 +32,14 @@ huggingface_hub>=0.20.0  # For BioGPT via Hugging Face Inference API
 # groq>=0.4.0  # Uncomment if using Groq API (for fast inference, not BioGPT)
 # Enhanced cross-source deduplication (optional - ML-based duplicate detection)
 recordlinkage>=0.16.0
+# Narrative clustering dependencies (CHUNK 6.11.12)
+umap-learn>=0.5.5
+hdbscan>=0.8.33
+scikit-learn>=1.3.0
+# Governance PDF/DOCX generation (CHUNK 6.21.1 - Parts 13-14)
+reportlab>=4.0.0
+python-docx>=1.1.0
+# Retry logic for API calls (Phase 1.3)
+tenacity>=8.2.0
+# YAML configuration for data sources (Phase 1.4)
+pyyaml>=6.0.0

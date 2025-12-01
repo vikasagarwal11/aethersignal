@@ -1,0 +1,204 @@
+# ============================================
+# AetherSignal Data Source Configuration
+# ============================================
+# This file controls which data sources are enabled
+# and their fallback behavior when unavailable
+
+sources:
+  # ============================================
+  # FREE SOURCES (Always enabled by default)
+  # ============================================
+  
+  reddit:
+    enabled: true
+    fallback: silent
+    priority: 10
+    metadata:
+      description: "Reddit social media posts"
+      type: "social"
+  
+  openfda:
+    enabled: true
+    fallback: silent
+    api_key_env: OPENFDA_API_KEY
+    priority: 9
+    metadata:
+      description: "FDA Adverse Event Reporting System (FAERS)"
+      type: "regulatory"
+      url: "https://open.fda.gov/"
+  
+  pubmed:
+    enabled: true
+    fallback: silent
+    api_key_env: PUBMED_API_KEY
+    priority: 8
+    metadata:
+      description: "PubMed medical literature"
+      type: "literature"
+      url: "https://pubmed.ncbi.nlm.nih.gov/"
+  
+  clinicaltrials:
+    enabled: true
+    fallback: silent
+    priority: 7
+    metadata:
+      description: "ClinicalTrials.gov adverse events"
+      type: "clinical_trials"
+      url: "https://clinicaltrials.gov/"
+  
+  dailymed:
+    enabled: true
+    fallback: silent
+    priority: 6
+    metadata:
+      description: "DailyMed drug labels"
+      type: "label"
+      url: "https://dailymed.nlm.nih.gov/"
+  
+  ema_prac:
+    enabled: true
+    fallback: silent
+    priority: 5
+    metadata:
+      description: "EMA PRAC (European Medicines Agency)"
+      type: "regulatory"
+      url: "https://www.ema.europa.eu/"
+  
+  mhra:
+    enabled: true
+    fallback: silent
+    priority: 5
+    metadata:
+      description: "MHRA Yellow Card (UK)"
+      type: "regulatory"
+      url: "https://yellowcard.mhra.gov.uk/"
+  
+  health_canada:
+    enabled: true
+    fallback: silent
+    priority: 5
+    metadata:
+      description: "Health Canada Adverse Reaction Database"
+      type: "regulatory"
+      url: "https://health-products.canada.ca/"
+  
+  tga_australia:
+    enabled: true
+    fallback: silent
+    priority: 5
+    metadata:
+      description: "TGA (Therapeutic Goods Administration, Australia)"
+      type: "regulatory"
+      url: "https://www.tga.gov.au/"
+  
+  drugs_com:
+    enabled: true
+    fallback: warning
+    priority: 4
+    metadata:
+      description: "Drugs.com patient forums"
+      type: "social"
+      url: "https://www.drugs.com/"
+  
+  patient_info:
+    enabled: true
+    fallback: warning
+    priority: 4
+    metadata:
+      description: "Patient.info health forums"
+      type: "social"
+      url: "https://patient.info/"
+  
+  google_places:
+    enabled: true
+    fallback: silent
+    api_key_env: GOOGLE_PLACES_API_KEY
+    priority: 3
+    metadata:
+      description: "Google Places reviews (pharmacy/clinic complaints)"
+      type: "social"
+      url: "https://developers.google.com/places"
+  
+  # ============================================
+  # PAID SOURCES (Auto-enabled if API key present)
+  # ============================================
+  
+  human_api:
+    enabled: auto
+    fallback: warning
+    api_key_env: HUMAN_API_KEY
+    priority: 2
+    metadata:
+      description: "Human API - Patient health data aggregation"
+      type: "ehr"
+      url: "https://www.humanapi.co/"
+      requires_payment: true
+  
+  metriport:
+    enabled: auto
+    fallback: warning
+    api_key_env: METRIPORT_API_KEY
+    priority: 2
+    metadata:
+      description: "Metriport - EHR/claims data integration"
+      type: "ehr"
+      url: "https://www.metriport.com/"
+      requires_payment: true
+  
+  drugbank:
+    enabled: auto
+    fallback: silent
+    api_key_env: DRUGBANK_KEY
+    priority: 1
+    metadata:
+      description: "DrugBank - Drug database and chemical structures"
+      type: "drug_database"
+      url: "https://go.drugbank.com/"
+      requires_payment: true
+  
+  vigibase:
+    enabled: auto
+    fallback: warning
+    api_key_env: VIGIBASE_KEY
+    priority: 1
+    metadata:
+      description: "VigiBase (WHO) - Global adverse event database"
+      type: "regulatory"
+      url: "https://www.who-umc.org/"
+      requires_payment: true
+  
+  epic_fhir:
+    enabled: auto
+    fallback: dummy
+    api_key_env: EPIC_FHIR_KEY
+    priority: 1
+    metadata:
+      description: "Epic FHIR - Hospital EHR integration"
+      type: "ehr"
+      url: "https://fhir.epic.com/"
+      requires_payment: true
+      requires_partnership: true
+  
+  cerner_fhir:
+    enabled: auto
+    fallback: dummy
+    api_key_env: CERNER_FHIR_KEY
+    priority: 1
+    metadata:
+      description: "Cerner FHIR - Hospital EHR integration"
+      type: "ehr"
+      url: "https://fhir.cerner.com/"
+      requires_payment: true
+      requires_partnership: true
+  
+  ohdsi:
+    enabled: auto
+    fallback: warning
+    api_key_env: OHDSI_KEY
+    priority: 1
+    metadata:
+      description: "OHDSI - Observational Health Data Sciences and Informatics"
+      type: "research"
+      url: "https://www.ohdsi.org/"
+      requires_payment: true
+

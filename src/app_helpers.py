@@ -48,11 +48,67 @@ def initialize_session():
         "analytics_enabled": True,
         "saved_queries": [],
         "loading_in_progress": False,
+        "chat_history": [],  # For ChatGPT-like interface
+        "analysis_mode": "fast",  # "fast" | "full" - Chunk 2: dual-mode execution
+        "pending_user_text": None,  # Chunk 4: Auto-fill chat input from pill suggestions
     }
 
     for key, default in DEFAULT_SESSION_KEYS.items():
         if key not in st.session_state:
             st.session_state[key] = default
+    
+    # -------------------------------------------
+    # 🔵 NEW: Conversation Memory Initialization (Chunk 6.1)
+    # -------------------------------------------
+    
+    if "memory_state" not in st.session_state:
+        st.session_state.memory_state = {
+            "drug": None,
+            "reactions": [],
+            "time_window": None,
+            "filters": {},
+            "user_goals": [],
+            "entities": {},
+            "conversation_summary": "",
+        }
+    
+    # -------------------------------------------
+    # 🔵 NEW: Developer Debug Mode (Chunk 6.7)
+    # -------------------------------------------
+    if "debug_mode" not in st.session_state:
+        # Set to False by default - developers can enable in sidebar
+        # Or set to True here for automatic debug mode during development
+        st.session_state.debug_mode = False
+    
+    # Initialize last_quick_results for debug panel
+    if "last_quick_results" not in st.session_state:
+        st.session_state.last_quick_results = None
+    
+    # --------------------------
+    # NEW: Processing Mode State (CHUNK 7.1)
+    # --------------------------
+    try:
+        from src.app_processing_mode import initialize_processing_mode
+        initialize_processing_mode()
+    except ImportError:
+        # Fallback if module not available
+        if "processing_mode" not in st.session_state:
+            st.session_state.processing_mode = "server"
+        if "processing_mode_reason" not in st.session_state:
+            st.session_state.processing_mode_reason = "Default: server-side processing"
+        if "processing_mode_override" not in st.session_state:
+            st.session_state.processing_mode_override = False
+    
+    # --------------------------
+    # NEW: Hybrid Master Engine Initialization (CHUNK 1 - Part 1.2)
+    # --------------------------
+    try:
+        from src.hybrid.hybrid_master_engine import HybridMasterEngine
+        if "hybrid_master_engine" not in st.session_state:
+            st.session_state.hybrid_master_engine = HybridMasterEngine()
+    except ImportError:
+        # Fallback - hybrid engine not available
+        pass
     
     # IMPORTANT: Don't clear auth state keys - they should persist across pages
     # Only initialize non-auth defaults

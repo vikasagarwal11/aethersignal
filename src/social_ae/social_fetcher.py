@@ -8,6 +8,31 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import requests
 import streamlit as st
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.Timeout)),
+    reraise=True
+)
+def _fetch_reddit_api_request(url: str, params: dict, timeout: int = 10) -> requests.Response:
+    """
+    Internal function to make Reddit API request with retry logic.
+    
+    Args:
+        url: API endpoint URL
+        params: Request parameters
+        timeout: Request timeout in seconds
+    
+    Returns:
+        Response object
+    
+    Raises:
+        requests.exceptions.RequestException: If request fails after retries
+    """
+    return requests.get(url, params=params, timeout=timeout)
 
 
 def fetch_reddit_posts(drug_terms: List[str], limit_per_term: int = 50, days_back: int = 7) -> List[Dict]:
@@ -46,7 +71,8 @@ def fetch_reddit_posts(drug_terms: List[str], limit_per_term: int = 50, days_bac
                 "sort_type": "desc",
             }
             
-            response = requests.get(url, params=params, timeout=10)
+            # Use retry-enabled request function
+            response = _fetch_reddit_api_request(url, params, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
@@ -78,6 +104,31 @@ def fetch_reddit_posts(drug_terms: List[str], limit_per_term: int = 50, days_bac
             continue
     
     return posts
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((requests.exceptions.RequestException, requests.exceptions.Timeout)),
+    reraise=True
+)
+def _fetch_x_api_request(url: str, headers: dict, params: dict, timeout: int = 10) -> requests.Response:
+    """
+    Internal function to make X API request with retry logic.
+    
+    Args:
+        url: API endpoint URL
+        headers: Request headers
+        params: Request parameters
+        timeout: Request timeout in seconds
+    
+    Returns:
+        Response object
+    
+    Raises:
+        requests.exceptions.RequestException: If request fails after retries
+    """
+    return requests.get(url, headers=headers, params=params, timeout=timeout)
 
 
 def fetch_x_posts(drug_terms: List[str], limit_per_term: int = 50) -> List[Dict]:
@@ -122,7 +173,8 @@ def fetch_x_posts(drug_terms: List[str], limit_per_term: int = 50) -> List[Dict]
                 "tweet.fields": "created_at,author_id,public_metrics",
             }
             
-            response = requests.get(url, headers=headers, params=params, timeout=10)
+            # Use retry-enabled request function
+            response = _fetch_x_api_request(url, headers, params, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
