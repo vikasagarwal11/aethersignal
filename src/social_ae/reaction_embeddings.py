@@ -5,7 +5,7 @@ REUSES existing components where possible.
 """
 
 import numpy as np
-from typing import Optional
+from typing import Optional, List
 import logging
 from functools import lru_cache
 

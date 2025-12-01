@@ -9,7 +9,7 @@ Option 3: Hybrid with strict privacy controls
 - Clear privacy warnings
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List, Any
 import pandas as pd
 from src import nl_query_parser
 
