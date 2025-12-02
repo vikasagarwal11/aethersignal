@@ -15,6 +15,7 @@ from .social_cleaner import clean_and_normalize_posts
 from .social_mapper import extract_reactions_from_posts
 from .social_anonymizer import anonymize_posts
 from .social_ae_storage import store_posts, init_database, get_statistics
+from src.storage.public_data_storage import store_from_dataframe
 
 # Configure logging
 logging.basicConfig(
@@ -126,6 +127,30 @@ def run_daily_pull(
         
         logger.info(f"Storage complete: {storage_result['stored']} new, {storage_result['duplicates']} duplicates")
         
+        # Step 6: Also store in public_ae_data table (public data platform)
+        logger.info("Storing in public_ae_data table...")
+        try:
+            # Prepare DataFrame for public storage
+            public_df = df_final.copy()
+            public_df["source"] = public_df.get("platform", "reddit")
+            public_df["drug"] = public_df.get("drug_match", public_df.get("drug_name", ""))
+            public_df["reaction"] = public_df.get("reaction", "")
+            public_df["text"] = public_df.get("cleaned_text", public_df.get("text", ""))
+            public_df["timestamp"] = pd.to_datetime(public_df.get("created_date", datetime.now()))
+            public_df["confidence"] = public_df.get("ae_prob", public_df.get("confidence_score", 0.5))
+            public_df["severity"] = public_df.get("severity_score", 0.0)
+            public_df["metadata"] = public_df.apply(lambda x: {
+                "platform": x.get("platform", "reddit"),
+                "subreddit": x.get("subreddit", ""),
+                "score": int(x.get("score", 0))
+            }, axis=1)
+            
+            public_storage_result = store_from_dataframe(public_df)
+            logger.info(f"Public storage: {public_storage_result['inserted']} inserted, {public_storage_result['errors']} errors")
+        except Exception as e:
+            logger.warning(f"Error storing to public_ae_data: {str(e)}")
+            public_storage_result = {"inserted": 0, "errors": 0}
+        
         return {
             "success": True,
             "posts_fetched": len(raw_posts),
@@ -134,6 +159,8 @@ def run_daily_pull(
             "posts_stored": storage_result["stored"],
             "posts_duplicate": storage_result["duplicates"],
             "posts_errors": storage_result["errors"],
+            "public_data_inserted": public_storage_result.get("inserted", 0),
+            "public_data_errors": public_storage_result.get("errors", 0),
             "drug_terms": drug_terms,
             "platforms": platforms,
             "timestamp": datetime.now().isoformat()
@@ -180,4 +207,43 @@ if __name__ == "__main__":
     # Can be run directly for testing
     result = run_scheduled_pull()
     print(result)
+
+
+# Public data platform daily pull (includes all free sources)
+def run_public_platform_pull() -> Dict:
+    """
+    Run daily pull for public data platform (all free sources).
+    This is the main entry point for GitHub Actions / Cron.
+    """
+    try:
+        from src.data_sources.public_daily_pull import run_public_daily_pull
+        
+        logger.info("=" * 50)
+        logger.info("Starting PUBLIC DATA PLATFORM daily pull")
+        logger.info("=" * 50)
+        
+        result = run_public_daily_pull(
+            drug_terms=None,  # Use default watchlist
+            days_back=1,
+            limit_per_drug=100
+        )
+        
+        if result["success"]:
+            logger.info("Public platform pull completed successfully")
+            logger.info(f"Total results: {result['total_results']}")
+            logger.info(f"Storage: {result['storage_result']['inserted']} inserted")
+        else:
+            logger.error(f"Public platform pull failed: {result.get('error', 'Unknown error')}")
+        
+        logger.info("=" * 50)
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error in public platform pull: {str(e)}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
 

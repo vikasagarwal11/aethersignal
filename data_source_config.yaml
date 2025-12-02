@@ -119,6 +119,18 @@ sources:
       type: "social"
       url: "https://developers.google.com/places"
   
+  medsafety_alerts:
+    enabled: true
+    fallback: silent
+    priority: 4
+    fda_enabled: true
+    ema_enabled: true
+    health_canada_enabled: false
+    metadata:
+      description: "FDA MedWatch and EMA Safety Alerts (RSS feeds)"
+      type: "regulatory_alerts"
+      url: "https://www.fda.gov/safety/medwatch"
+  
   # ============================================
   # PAID SOURCES (Auto-enabled if API key present)
   # ============================================

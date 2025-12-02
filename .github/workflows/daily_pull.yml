@@ -1,0 +1,43 @@
+name: Daily AE Data Pull
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC (adjust timezone as needed)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run public data platform pull
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          PUBMED_API_KEY: ${{ secrets.PUBMED_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          python -c "from src.social_ae.social_ae_scheduler import run_public_platform_pull; import json; result = run_public_platform_pull(); print(json.dumps(result, indent=2))"
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Daily pull failed - check logs"
+          # Add notification logic here (email, Slack, etc.)
+

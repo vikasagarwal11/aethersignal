@@ -1,0 +1,25 @@
+display:
+  default_days_back: 90
+  max_signals_display: 50
+  trend_periods:
+  - 7
+  - 30
+  - 90
+  - 365
+features:
+  geo_analysis: true
+  label_intelligence: true
+  mechanism_ai: true
+  narrative_ai: true
+  quantum_engine: true
+  risk_matrix: true
+  severity_engine: true
+  trend_forecast: true
+sources:
+  clinical_trials: true
+  dailymed: true
+  faers: true
+  literature: true
+  openfda: true
+  pubmed: true
+  social: true

@@ -8,6 +8,7 @@ from .openfda import OpenFDAClient
 from .pubmed import PubMedClient
 from .clinicaltrials import ClinicalTrialsClient
 from .dailymed import DailyMedClient
+from .medsafety_alerts import MedSafetyAlertsClient
 
 # Paid sources
 from .humanapi import HumanAPIClient
@@ -27,6 +28,7 @@ __all__ = [
     "PubMedClient",
     "ClinicalTrialsClient",
     "DailyMedClient",
+    "MedSafetyAlertsClient",
     # Paid sources
     "HumanAPIClient",
     "MetriportClient",

@@ -59,6 +59,7 @@ class SourceRegistry:
             from .sources.pubmed import PubMedClient
             from .sources.clinicaltrials import ClinicalTrialsClient
             from .sources.dailymed import DailyMedClient
+            from .sources.medsafety_alerts import MedSafetyAlertsClient
             
             # Paid sources
             from .sources.humanapi import HumanAPIClient
@@ -96,6 +97,12 @@ class SourceRegistry:
                 self.sources["dailymed"] = DailyMedClient("dailymed", sources_config["dailymed"])
             except Exception as e:
                 logger.error(f"Error loading DailyMed client: {str(e)}")
+        
+        if "medsafety_alerts" in sources_config:
+            try:
+                self.sources["medsafety_alerts"] = MedSafetyAlertsClient("medsafety_alerts", sources_config["medsafety_alerts"])
+            except Exception as e:
+                logger.error(f"Error loading MedSafetyAlerts client: {str(e)}")
         
         # Paid sources (with auto-enable logic)
         if "human_api" in sources_config:
