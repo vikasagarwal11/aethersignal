@@ -284,12 +284,12 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     # Add conversational response tab if LLM is enabled
     use_llm = st.session_state.get("use_llm", False)
     if use_llm:
-        overview_tab, conversational_tab, signals_tab, trends_tab, trend_alerts_tab, rpf_tab, benefit_risk_tab, qsp_tab, inspector_qa_tab, portfolio_tab, cases_tab, report_tab, sar_tab, dsur_pbrer_tab, capa_tab, inspection_tab, csp_tab, label_impact_tab, governance_tab = st.tabs(
-            ["📊 Overview", "💬 Conversational", "⚛️ Signals", "📅 Time & Co-reactions", "⚠️ Trend Alerts", "📊 RPF", "📊 Benefit–Risk", "🔥 QSP Prioritization", "🔍 Inspector Q&A", "📊 Portfolio Intelligence", "📋 Cases", "📄 Report", "📄 SAR Report", "📘 DSUR / 📙 PBRER", "🛠️ CAPA", "📑 Inspection", "🧬 CSP", "📄 Label Impact", "🛡️ Governance"]
+        overview_tab, conversational_tab, signals_tab, trends_tab, trend_alerts_tab, local_trends_tab, case_clustering_tab, duplicates_tab, rpf_tab, benefit_risk_tab, qsp_tab, inspector_qa_tab, portfolio_tab, portfolio_trends_tab, cases_tab, report_tab, sar_tab, dsur_pbrer_tab, capa_tab, inspection_tab, csp_tab, label_impact_tab, governance_tab = st.tabs(
+            ["📊 Overview", "💬 Conversational", "⚛️ Signals", "📅 Time & Co-reactions", "⚠️ Trend Alerts", "📈 Local Trends", "⚛️ Case Clustering", "🔍 Duplicate Signals", "📊 RPF", "📊 Benefit–Risk", "🔥 QSP Prioritization", "🔍 Inspector Q&A", "📊 Portfolio Intelligence", "🔥 Portfolio Trends", "📋 Cases", "📄 Report", "📄 SAR Report", "📘 DSUR / 📙 PBRER", "🛠️ CAPA", "📑 Inspection", "🧬 CSP", "📄 Label Impact", "🛡️ Governance"]
         )
     else:
-        overview_tab, signals_tab, trends_tab, trend_alerts_tab, rpf_tab, benefit_risk_tab, qsp_tab, inspector_qa_tab, portfolio_tab, cases_tab, report_tab, sar_tab, dsur_pbrer_tab, capa_tab, inspection_tab, csp_tab, label_impact_tab, governance_tab = st.tabs(
-            ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "⚠️ Trend Alerts", "📊 RPF", "📊 Benefit–Risk", "🔥 QSP Prioritization", "🔍 Inspector Q&A", "📊 Portfolio Intelligence", "📋 Cases", "📄 Report", "📄 SAR Report", "📘 DSUR / 📙 PBRER", "🛠️ CAPA", "📑 Inspection", "🧬 CSP", "📄 Label Impact", "🛡️ Governance"]
+        overview_tab, signals_tab, trends_tab, trend_alerts_tab, local_trends_tab, case_clustering_tab, duplicates_tab, rpf_tab, benefit_risk_tab, qsp_tab, inspector_qa_tab, portfolio_tab, portfolio_trends_tab, cases_tab, report_tab, sar_tab, dsur_pbrer_tab, capa_tab, inspection_tab, csp_tab, label_impact_tab, governance_tab = st.tabs(
+            ["📊 Overview", "⚛️ Signals", "📅 Time & Co-reactions", "⚠️ Trend Alerts", "📈 Local Trends", "⚛️ Case Clustering", "🔍 Duplicate Signals", "📊 RPF", "📊 Benefit–Risk", "🔥 QSP Prioritization", "🔍 Inspector Q&A", "📊 Portfolio Intelligence", "🔥 Portfolio Trends", "📋 Cases", "📄 Report", "📄 SAR Report", "📘 DSUR / 📙 PBRER", "🛠️ CAPA", "📑 Inspection", "🧬 CSP", "📄 Label Impact", "🛡️ Governance"]
         )
         conversational_tab = None  # Not available
 
@@ -314,6 +314,36 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
     with trend_alerts_tab:
         from src.ui.trend_alerts_panel import render_trend_alerts_tab
         render_trend_alerts_tab(normalized_df)
+
+    # ---------------- Local Trends Tab (CHUNK 7.10) ----------------
+    with local_trends_tab:
+        try:
+            from src.ui.local_trend_panel import render_local_trend_panel
+            render_local_trend_panel(normalized_df)
+        except ImportError:
+            st.info("Local Trend Panel not available. Please ensure the module is installed.")
+        except Exception as e:
+            st.error(f"Error loading Local Trend Panel: {e}")
+
+    # ---------------- Case Clustering Tab (CHUNK 6.24) ----------------
+    with case_clustering_tab:
+        try:
+            from src.ui.case_cluster_explorer import render_case_cluster_explorer
+            render_case_cluster_explorer(normalized_df)
+        except ImportError:
+            st.info("Case Clustering Panel not available. Please ensure the module is installed.")
+        except Exception as e:
+            st.error(f"Error loading Case Clustering Panel: {e}")
+
+    # ---------------- Duplicate Signals Tab (CHUNK 6.26) ----------------
+    with duplicates_tab:
+        try:
+            from src.ui.duplicates_panel import render_duplicates_panel
+            render_duplicates_panel(normalized_df)
+        except ImportError:
+            st.info("Duplicate Detection Panel not available. Please ensure the module is installed.")
+        except Exception as e:
+            st.error(f"Error loading Duplicate Detection Panel: {e}")
 
     # ---------------- RPF Tab (CHUNK A - Local RPF) ----------------
     with rpf_tab:
@@ -375,6 +405,16 @@ def display_query_results(filters: Dict, query_text: str, normalized_df: pd.Data
             st.info("Portfolio Intelligence panel not yet available. Coming in future update.")
         except Exception as e:
             st.error(f"Error loading Portfolio Intelligence: {str(e)}")
+
+    # ---------------- Portfolio Trends Tab (CHUNK 6.29) ----------------
+    with portfolio_trends_tab:
+        try:
+            from src.ui.portfolio_trend_visualizer import render_portfolio_trend_visualizer
+            render_portfolio_trend_visualizer(normalized_df)
+        except ImportError:
+            st.info("Portfolio Trend Visualizer not available. Please ensure the module is installed.")
+        except Exception as e:
+            st.error(f"Error loading Portfolio Trend Visualizer: {e}")
 
     # ---------------- Cases Tab ----------------
     with cases_tab:

@@ -8,18 +8,20 @@ This module provides optional literature integration that can enhance:
 - Case assessment (finding relevant clinical trials and publications)
 """
 
+import os
 import requests
 from typing import Dict, List, Optional
 from datetime import datetime
 import time
 import xml.etree.ElementTree as ET
+from src.utils.config_loader import load_config
 
 
 def search_pubmed(drug: str, reaction: Optional[str] = None, max_results: int = 10) -> List[Dict]:
     """
     Search PubMed for articles related to drug and reaction.
     
-    Uses NCBI E-utilities API (free, no API key required).
+    Uses NCBI E-utilities API (free, API key optional for higher rate limits).
     
     Args:
         drug: Drug name
@@ -30,6 +32,13 @@ def search_pubmed(drug: str, reaction: Optional[str] = None, max_results: int = 
         List of dictionaries with article information
     """
     try:
+        # Get API key from config file first, then environment
+        app_config = load_config()
+        api_key = (
+            app_config.get("api_keys", {}).get("PUBMED_API_KEY") or
+            os.getenv("PUBMED_API_KEY")
+        )
+        
         # Build search query
         query_parts = [drug]
         if reaction:
@@ -45,6 +54,10 @@ def search_pubmed(drug: str, reaction: Optional[str] = None, max_results: int = 
             'retmode': 'json',
             'sort': 'relevance'
         }
+        
+        # Add API key if available (increases rate limit from 3/sec to 10/sec)
+        if api_key:
+            search_params['api_key'] = api_key
         
         try:
             response = requests.get(search_url, params=search_params, timeout=10)
@@ -71,6 +84,10 @@ def search_pubmed(drug: str, reaction: Optional[str] = None, max_results: int = 
             'id': ','.join(pmids[:max_results]),
             'retmode': 'xml'
         }
+        
+        # Add API key if available
+        if api_key:
+            fetch_params['api_key'] = api_key
         
         try:
             response = requests.get(fetch_url, params=fetch_params, timeout=15)

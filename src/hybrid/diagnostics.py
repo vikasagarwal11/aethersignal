@@ -2,7 +2,7 @@
 Hybrid Summary Diagnostics (CHUNK 7.4 Part 1)
 Builds diagnostics information for summary generation.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import time
 
 

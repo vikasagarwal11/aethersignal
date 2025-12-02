@@ -10,6 +10,7 @@ from datetime import datetime
 import time
 
 from ..base import SourceClientBase
+from src.utils.config_loader import load_config
 
 
 class PubMedClient(SourceClientBase):
@@ -22,7 +23,12 @@ class PubMedClient(SourceClientBase):
     
     def __init__(self, name: str, config: Dict[str, Any]):
         super().__init__(name, config)
-        self.api_key = os.getenv("PUBMED_API_KEY")
+        # Get API key from config file first, then environment
+        app_config = load_config()
+        self.api_key = (
+            app_config.get("api_keys", {}).get("PUBMED_API_KEY") or
+            os.getenv("PUBMED_API_KEY")
+        )
         self.email = os.getenv("PUBMED_EMAIL", "user@example.com")  # Required by NCBI
     
     def fetch(self, query: Dict[str, Any]) -> List[Dict[str, Any]]:

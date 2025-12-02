@@ -46,6 +46,11 @@ analytics/usage_log.csv
 .env
 .env.local
 
+# Configuration files with API keys
+config/aethersignal_config.json
+config/*.json
+!config/*.example.json
+
 # Streamlit
 .streamlit/
 

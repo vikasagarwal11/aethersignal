@@ -53,18 +53,51 @@ def render_copilot_workspace():
                 "content": prompt
             })
             
-            # Get response from copilot engine
-            with st.spinner("Thinking..."):
-                engine = st.session_state.copilot_engine
-                response = engine.ask(prompt)
+            # Get response from copilot engine (with streaming support)
+            engine = st.session_state.copilot_engine
             
-            # Add assistant response
-            st.session_state.copilot_history.append({
-                "role": "assistant",
-                "content": response
-            })
+            # Check if streaming is enabled
+            use_streaming = st.session_state.get("copilot_streaming", True)
             
-            st.rerun()
+            if use_streaming:
+                # Stream response
+                response_placeholder = st.empty()
+                full_response = ""
+                
+                try:
+                    response_stream = engine.ask(prompt, stream=True)
+                    
+                    for chunk in response_stream:
+                        full_response += chunk
+                        response_placeholder.write(full_response)
+                    
+                    # Add complete response to history
+                    st.session_state.copilot_history.append({
+                        "role": "assistant",
+                        "content": full_response
+                    })
+                except Exception:
+                    # Fallback to non-streaming
+                    with st.spinner("Thinking..."):
+                        response = engine.ask(prompt, stream=False)
+                    
+                    st.session_state.copilot_history.append({
+                        "role": "assistant",
+                        "content": response
+                    })
+                    st.rerun()
+            else:
+                # Non-streaming mode
+                with st.spinner("Thinking..."):
+                    response = engine.ask(prompt, stream=False)
+                
+                # Add assistant response
+                st.session_state.copilot_history.append({
+                    "role": "assistant",
+                    "content": response
+                })
+                
+                st.rerun()
         
         # Tool information sidebar
         with st.sidebar:

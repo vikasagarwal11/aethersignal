@@ -58,10 +58,10 @@ def render_social_ae_module():
     # Platform selection
     platforms = st.multiselect(
         "Platforms",
-        options=["reddit", "x"],
+        options=["reddit", "x", "youtube"],
         default=["reddit"],
         key="social_ae_platforms",
-        help="Select social media platforms to search (X requires API token)",
+        help="Select social media platforms to search (X and YouTube require API keys)",
     )
     
     if not platforms:
@@ -72,8 +72,14 @@ def render_social_ae_module():
     if drug_terms:
         st.session_state.social_ae_drug_terms = drug_terms
     
-    # Tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Fetch & View", "📈 Trends", "📊 Database", "⚙️ Automation"])
+    # Tabs for different views (Phase 2: Added Intelligence tab)
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🔍 Fetch & View", 
+        "📈 Trends", 
+        "🧠 Intelligence",  # NEW: Phase 2
+        "📊 Database", 
+        "⚙️ Automation"
+    ])
     
     with tab1:
         render_fetch_tab(drug_terms, days_back, platforms)
@@ -82,9 +88,12 @@ def render_social_ae_module():
         render_trends_tab()
     
     with tab3:
-        render_database_tab()
+        render_intelligence_tab()  # NEW: Phase 2
     
     with tab4:
+        render_database_tab()
+    
+    with tab5:
         render_automation_tab()
 
 
@@ -777,7 +786,7 @@ def render_database_tab():
         with query_col2:
             query_platform = st.selectbox(
                 "Platform (optional)",
-                options=["", "reddit", "x", "twitter"],
+                options=["", "reddit", "x", "twitter", "youtube"],
                 key="db_query_platform"
             )
             query_days = st.number_input("Days back", min_value=1, max_value=365, value=30, key="db_query_days")
@@ -865,4 +874,197 @@ def render_automation_tab():
             st.dataframe(pulls_df, use_container_width=True, hide_index=True)
     except Exception:
         pass
+
+
+def render_intelligence_tab():
+    """
+    Render the Intelligence tab (Phase 2: Social Intelligence Features).
+    Includes: Spike detection, Novelty detection, Clustering, Cross-linking with FAERS.
+    """
+    st.markdown("#### 🧠 Social Intelligence Analysis")
+    st.caption(
+        "Advanced analysis: spike detection, novelty detection, clustering, and FAERS cross-linking. "
+        "⚠️ Requires social data to be loaded."
+    )
+    
+    # Try to load social data
+    social_df = None
+    if "social_ae_data" in st.session_state and not st.session_state.social_ae_data.empty:
+        social_df = st.session_state.social_ae_data
+    else:
+        # Try to load from database
+        try:
+            from src.social_ae.social_storage import load_recent_social
+            social_df = load_recent_social(days=30)
+        except Exception:
+            pass
+    
+    if social_df is None or social_df.empty:
+        st.info("💡 No social data available. Fetch posts in the 'Fetch & View' tab first.")
+        return
+    
+    # Initialize intelligence engine
+    try:
+        from src.social_ae.intelligence import SocialIntelligenceEngine
+        intel_engine = SocialIntelligenceEngine()
+    except Exception as e:
+        st.error(f"Error initializing intelligence engine: {e}")
+        return
+    
+    # Try to load FAERS data for cross-linking
+    faers_df = None
+    try:
+        if "normalized_data" in st.session_state and st.session_state.normalized_data is not None:
+            faers_df = st.session_state.normalized_data
+        elif "data" in st.session_state and st.session_state.data is not None:
+            faers_df = st.session_state.data
+    except Exception:
+        pass
+    
+    # Analysis controls
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        run_spike = st.button("🔍 Detect Spikes", use_container_width=True, type="primary")
+        run_novelty = st.button("🆕 Detect Novel Reactions", use_container_width=True)
+    
+    with col2:
+        run_clustering = st.button("🧩 Cluster Posts", use_container_width=True)
+        run_crosslink = st.button("🔗 Cross-Link with FAERS", use_container_width=True, disabled=faers_df is None)
+    
+    if faers_df is None:
+        st.info("💡 Load FAERS data in Quantum PV Explorer to enable cross-linking.")
+    
+    st.markdown("---")
+    
+    # Run analyses
+    if run_spike:
+        with st.spinner("Detecting spikes in social activity..."):
+            spikes = intel_engine.detect_spikes(social_df)
+            
+            if spikes:
+                st.subheader("📈 Detected Spikes")
+                st.json(spikes)
+                
+                # Visualize spikes
+                try:
+                    import plotly.express as px
+                    spike_df = pd.DataFrame(spikes)
+                    spike_df["date"] = pd.to_datetime(spike_df["date"])
+                    spike_df = spike_df.sort_values("date")
+                    
+                    fig = px.bar(
+                        spike_df,
+                        x="date",
+                        y="count",
+                        title="Social AE Activity Spikes",
+                        labels={"count": "Post Count", "date": "Date"}
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.warning(f"Could not visualize spikes: {e}")
+            else:
+                st.info("No significant spikes detected.")
+    
+    if run_novelty:
+        with st.spinner("Detecting novel reactions (present in social but not FAERS)..."):
+            novel = intel_engine.detect_novel_reactions(social_df, faers_df)
+            
+            if novel:
+                st.subheader("🆕 Novel Reactions (Social > FAERS)")
+                
+                novel_df = pd.DataFrame(novel)
+                st.dataframe(novel_df, use_container_width=True)
+                
+                st.metric("Novel Reactions Found", len(novel))
+                st.metric(
+                    "Total Social Mentions", 
+                    sum(novel_df["social_count"].tolist())
+                )
+            else:
+                st.info("No novel reactions detected (or no FAERS data for comparison).")
+    
+    if run_clustering:
+        with st.spinner("Clustering posts by content similarity..."):
+            clusters = intel_engine.cluster_posts(social_df, n_clusters=5)
+            
+            if clusters:
+                st.subheader("🧩 Post Clusters")
+                
+                for cluster in clusters:
+                    with st.expander(
+                        f"Cluster {cluster['cluster_id']} "
+                        f"({cluster['size']} posts, {cluster['percentage']}%)"
+                    ):
+                        st.write("**Example posts:**")
+                        for i, example in enumerate(cluster["examples"], 1):
+                            st.write(f"{i}. {example[:200]}...")
+            else:
+                st.info("Clustering requires at least 5 posts with text content.")
+    
+    if run_crosslink and faers_df is not None:
+        with st.spinner("Cross-linking social data with FAERS evidence..."):
+            crosslink = intel_engine.crosslink_faers(social_df, faers_df)
+            
+            if crosslink:
+                st.subheader("🔗 Cross-Linked Evidence (Social ↔ FAERS)")
+                
+                crosslink_df = pd.DataFrame(crosslink)
+                st.dataframe(crosslink_df, use_container_width=True)
+                
+                st.metric("Matching Drug-Reaction Pairs", len(crosslink))
+                
+                # Summary by drug
+                if "drug" in crosslink_df.columns:
+                    drug_summary = crosslink_df.groupby("drug").size().sort_values(ascending=False)
+                    st.write("**Matches by Drug:**")
+                    st.dataframe(drug_summary.reset_index().rename(columns={0: "Match Count"}), use_container_width=True)
+            else:
+                st.info("No matching drug-reaction pairs found between social and FAERS data.")
+    
+    # Quick explainability section
+    st.markdown("---")
+    st.subheader("💡 Pattern Explanation")
+    
+    explain_col1, explain_col2 = st.columns(2)
+    
+    with explain_col1:
+        explain_drug = st.text_input("Drug name", key="explain_drug", placeholder="e.g., semaglutide")
+    
+    with explain_col2:
+        explain_reaction = st.text_input("Reaction", key="explain_reaction", placeholder="e.g., nausea")
+    
+    if st.button("Explain Pattern", use_container_width=True):
+        if explain_drug and explain_reaction:
+            # Check for spikes
+            drug_reaction_df = social_df[
+                (social_df.get("drug_match", pd.Series()).str.contains(explain_drug, case=False, na=False)) |
+                (social_df.get("reaction", pd.Series()).str.contains(explain_reaction, case=False, na=False))
+            ]
+            
+            spike_info = None
+            if not drug_reaction_df.empty:
+                spikes = intel_engine.detect_spikes(drug_reaction_df)
+                if spikes:
+                    spike_info = spikes[0]  # Use first spike
+            
+            # Check for novelty
+            novel = intel_engine.detect_novel_reactions(
+                social_df[social_df.get("reaction", pd.Series()).str.contains(explain_reaction, case=False, na=False)],
+                faers_df
+            )
+            is_novel = any(r["reaction"].lower() == explain_reaction.lower() for r in novel)
+            
+            # Generate explanation
+            explanation = intel_engine.explain_social_pattern(
+                explain_drug,
+                explain_reaction,
+                spike_info,
+                is_novel
+            )
+            
+            st.info(explanation)
+        else:
+            st.warning("Please enter both drug and reaction names.")
 

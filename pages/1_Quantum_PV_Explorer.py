@@ -125,6 +125,7 @@ workspace = st.session_state.get("active_workspace", "explorer")
 # Route to different workspaces
 if workspace == "governance":
     # Governance & Audit Workspace
+    
     try:
         from src.ui.unified_governance_dashboard import render_unified_governance_dashboard
         import pandas as pd
@@ -152,6 +153,7 @@ if workspace == "governance":
 
 elif workspace == "inspector":
     # Inspector Simulation Workspace
+    
     try:
         from src.ui.inspector_qa_panel import render_inspector_qa_tab
         import pandas as pd
@@ -173,6 +175,7 @@ elif workspace == "inspector":
 
 elif workspace == "executive":
     # Executive Dashboard Workspace
+    
     try:
         from src.ui.executive_dashboard_enhanced import render_executive_dashboard_enhanced
         import pandas as pd
@@ -195,6 +198,7 @@ elif workspace == "executive":
 
 elif workspace == "quantum":
     # Quantum & Advanced Workspace
+    
     st.title("⚛️ Quantum & Advanced Analytics")
     st.caption("Quantum-inspired ranking and experimental analytics")
     
@@ -220,6 +224,7 @@ elif workspace == "quantum":
 
 elif workspace == "processing":
     # Processing & Offline Mode Workspace
+    
     st.title("🧬 Processing & Offline Mode")
     st.caption("Control where computation runs: server, local, or hybrid")
     
@@ -281,6 +286,12 @@ elif workspace == "processing":
 # -------------------------------------------------------------------
 header.render_header()
 header.render_banner()
+
+# -------------------------------------------------------------------
+# STATUS BAR V2 (UX Improvement - shows active workspace & processing mode)
+# -------------------------------------------------------------------
+from src.ui.status_bar_v2 import render_status_bar_v2
+render_status_bar_v2()
 
 
 # -------------------------------------------------------------------

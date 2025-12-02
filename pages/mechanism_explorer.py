@@ -1,0 +1,231 @@
+"""
+Mechanism Explorer Page - Complete mechanistic intelligence interface
+"""
+
+import streamlit as st
+import pandas as pd
+from typing import Optional, List, Dict, Any
+
+# Import knowledge graph components
+from src.knowledge_graph.mechanism_supervisor import MechanismSupervisor
+from src.knowledge_graph.pathway_graph_builder import PathwayGraphBuilder
+from src.knowledge_graph.evidence_ranker import EvidenceRanker
+
+# Import UI components
+from src.ui.mechanism.alert_panel import mechanistic_alert_panel
+from src.ui.mechanism.embedding_panel import embedding_panel
+from src.ui.mechanism.pathway_graph_section import pathway_graph_section
+from src.ui.mechanism.components import kpi_tile, mechanism_card
+from src.ui.layout.base_layout import render_base_layout
+
+
+def _get_supervisor() -> Optional[MechanismSupervisor]:
+    """Get or create mechanism supervisor instance."""
+    if "mechanism_supervisor" not in st.session_state:
+        try:
+            from src.knowledge_graph import (
+                KnowledgeGraph, KGRouter, MechanismEmbeddingFusion,
+                PathwayExpansionEngine, CausalInferenceEngine,
+                LiteratureSummarizer, ToxicologyReasoner,
+                CrossDrugInteractionEngine, NovelSignalDetector,
+                MechanisticAlerts, GPUEmbeddingEngine
+            )
+            
+            # Initialize components
+            kg = KnowledgeGraph()
+            router = KGRouter(kg)
+            embedding_engine = GPUEmbeddingEngine()
+            fusion = MechanismEmbeddingFusion(embedding_engine)
+            pathways = PathwayExpansionEngine(kg, embedding_engine)
+            causal = CausalInferenceEngine(kg, router)
+            lit = LiteratureSummarizer()
+            toxic = ToxicologyReasoner()
+            inter = CrossDrugInteractionEngine()
+            novelty = NovelSignalDetector(kg, router)
+            alerts = MechanisticAlerts()
+            
+            supervisor = MechanismSupervisor(
+                fusion=fusion,
+                pathways=pathways,
+                causal=causal,
+                lit=lit,
+                toxic=toxic,
+                inter=inter,
+                novelty=novelty,
+                alerts=alerts,
+                kg=kg,
+                router=router
+            )
+            
+            st.session_state.mechanism_supervisor = supervisor
+        except Exception as e:
+            st.error(f"Failed to initialize mechanism supervisor: {e}")
+            return None
+    
+    return st.session_state.get("mechanism_supervisor")
+
+
+def render_mechanism_explorer():
+    """
+    Render the Mechanism Explorer page.
+    """
+    def page_content():
+        st.title("🧠 Mechanism Explorer")
+        st.caption("AI-powered mechanistic intelligence for drug safety analysis")
+        
+        # Get supervisor
+        supervisor = _get_supervisor()
+        if not supervisor:
+            st.error("Mechanism supervisor not available. Please check configuration.")
+            return
+        
+        # Input section
+        st.markdown("### 🔍 Drug-Reaction Analysis")
+        col1, col2 = st.columns(2)
+        drug = col1.text_input("Drug Name", value="semaglutide", key="mech_drug")
+        reaction = col2.text_input("Reaction", value="nausea", key="mech_reaction")
+        
+        # Optional co-medications
+        co_meds = st.text_input(
+            "Co-medications (comma-separated)",
+            value="",
+            help="Optional: Enter co-medications to check for interactions"
+        )
+        co_medications = [m.strip() for m in co_meds.split(",") if m.strip()] if co_meds else []
+        
+        if not drug or not reaction:
+            st.info("Enter a drug and reaction to begin analysis.")
+            return
+        
+        # Load data (placeholder - should integrate with actual data sources)
+        social_df = pd.DataFrame()  # TODO: Load from actual source
+        faers_df = pd.DataFrame()    # TODO: Load from actual source
+        lit_papers = []              # TODO: Load from actual source
+        mech_texts = []              # TODO: Load from actual source
+        
+        # Run analysis
+        with st.spinner("Running Mechanism AI Analysis..."):
+            try:
+                result = supervisor.analyze(
+                    drug=drug,
+                    reaction=reaction,
+                    social_df=social_df,
+                    faers_df=faers_df,
+                    lit_papers=lit_papers,
+                    mech_texts=mech_texts,
+                    co_medications=co_medications
+                )
+                
+                # Rank evidence
+                ranker = EvidenceRanker()
+                ranking = ranker.rank(result)
+                result["ranking"] = ranking
+                
+            except Exception as e:
+                st.error(f"Analysis error: {e}")
+                return
+        
+        st.markdown("---")
+        
+        # KPI Tiles
+        st.markdown("### 📊 Key Metrics")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            kpi_tile(
+                "Fusion Score",
+                f"{result['fusion']['fusion_score']:.3f}",
+                "#2563eb"
+            )
+        
+        with col2:
+            kpi_tile(
+                "Causal Strength",
+                f"{result['causal'].get('causal_score', 0.0):.3f}",
+                "#10b981"
+            )
+        
+        with col3:
+            kpi_tile(
+                "Evidence Score",
+                f"{ranking['evidence_score']:.3f}",
+                "#f59e0b"
+            )
+        
+        with col4:
+            kpi_tile(
+                "Novel Signal",
+                "Yes" if result["novel"] else "No",
+                "#dc2626" if result["novel"] else "#16a34a"
+            )
+        
+        st.markdown("---")
+        
+        # Alert Panel
+        mechanistic_alert_panel(result["alert"])
+        
+        # Embedding Panel
+        embedding_panel(result["fusion"])
+        
+        st.markdown("---")
+        
+        # Pathway Graph Section
+        graph_builder = PathwayGraphBuilder()
+        graph = graph_builder.build(
+            drug=drug,
+            reaction=reaction,
+            pathways=result.get("related_pathways", []),
+            mechanisms=mech_texts[:3] if mech_texts else None
+        )
+        
+        pathway_graph_section(graph, result.get("related_pathways", []))
+        
+        st.markdown("---")
+        
+        # Toxicology & Interactions
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🧪 Toxicology Insights")
+            tox = result.get("toxicology", {})
+            if tox.get("tox_present"):
+                st.warning(f"⚠️ Toxicity detected: {tox.get('tox_match', 'Unknown')}")
+                if tox.get("class_match"):
+                    st.info(f"Chemical class risk: {tox.get('class_match')}")
+            else:
+                st.success("✅ No known toxicity patterns detected")
+            with st.expander("Toxicology Details"):
+                st.json(tox)
+        
+        with col2:
+            st.subheader("💊 Drug Interactions")
+            interactions = result.get("interactions", {})
+            if interactions.get("has_interactions"):
+                st.warning(f"⚠️ {interactions.get('count', 0)} interaction(s) detected")
+                for hit in interactions.get("interactions_detected", [])[:3]:
+                    st.caption(f"• {hit.get('pair')}: {hit.get('mechanism')}")
+            else:
+                st.success("✅ No significant interactions detected")
+            with st.expander("Interaction Details"):
+                st.json(interactions)
+        
+        st.markdown("---")
+        
+        # Literature Summary
+        st.subheader("📄 Literature Summary")
+        lit_summary = result.get("literature", {})
+        summary_text = lit_summary.get("summary")
+        if summary_text:
+            st.write(summary_text)
+            st.caption(f"Based on {lit_summary.get('papers_used', 0)} paper(s)")
+        else:
+            st.info("No literature summary available.")
+        
+        st.markdown("---")
+        
+        # Complete Analysis View
+        with st.expander("🔬 Complete Analysis Results"):
+            st.json(result)
+    
+    render_base_layout(page_content)
+

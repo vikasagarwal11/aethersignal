@@ -7,6 +7,33 @@ Multi-module platform for Pharmacovigilance exploration.
 from dotenv import load_dotenv
 load_dotenv()
 
+# Setup logging (must be early)
+try:
+    from src.logging.logger_setup import configure_logging_from_config
+    configure_logging_from_config()
+except Exception:
+    # Fallback to basic logging if config not available
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
+# Run startup health checks
+try:
+    from src.system.startup_checks import startup_health_check, print_startup_summary
+    import os
+    if os.getenv("DEV_MODE", "false").lower() == "true":
+        print_startup_summary()
+    else:
+        startup_health_check()  # Silent in production
+except Exception:
+    pass
+
+# Validate environment
+try:
+    from src.system.env_validator import check_env_on_startup
+    check_env_on_startup()
+except Exception:
+    pass
+
 import streamlit as st
 
 # Restore authentication session first, before anything else

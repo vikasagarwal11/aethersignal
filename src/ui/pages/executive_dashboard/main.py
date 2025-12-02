@@ -1,11 +1,14 @@
 """
 Executive Dashboard - Main Entry Point
 Enterprise-grade executive safety intelligence dashboard
+Wave 5: Added AI Explainer integration
+Wave 6: Added feature gating
 """
 
 import streamlit as st
 from src.ui.layout.base_layout import render_base_layout
 from src.ui.layout.state import GlobalState
+from src.security.feature_gate import require_feature, check_feature
 from .kpi_tiles import render_kpi_tiles
 from .trends import render_trends
 from .signal_tables import render_top_signals_table
@@ -19,8 +22,15 @@ from .summaries import render_executive_summary
 def render_executive_dashboard():
     """
     Render the complete executive dashboard.
+    Wave 6: Feature-gated for Pro/Enterprise tiers.
     """
     def page_content():
+        # Feature gate check
+        if not check_feature("executive_dashboard"):
+            from src.security.feature_gate import render_feature_gate_message
+            render_feature_gate_message("executive_dashboard")
+            return
+        
         # Page header
         st.markdown("## 🌍 Executive Drug Safety Dashboard")
         st.caption("Multi-source safety intelligence for executive decision-making")

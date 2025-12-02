@@ -1,10 +1,12 @@
 """
 Top Signals Table Component - Executive Dashboard
 Ranked signal table with sorting and filtering
+Wave 5: Added AI Explainer integration
 """
 
 import streamlit as st
 import pandas as pd
+from src.ui.components.explain_button import explain_button
 
 
 def render_top_signals_table():
@@ -49,7 +51,39 @@ def render_top_signals_table():
         height=400
     )
     
+    # Wave 5: Add explain buttons for top signals
+    st.markdown("---")
+    st.markdown("#### 🧠 Explain Top Signals")
+    st.caption("Get AI-powered explanations for the top signals")
+    
+    # Show explain buttons for first 3 signals
+    for idx, row in df.head(3).iterrows():
+        drug = "Multiple"  # Default if drug column not available
+        reaction = row.get("Reaction", "Unknown")
+        severity = row.get("Severity Score", None)
+        novelty = row.get("Novelty", "No") == "Yes"
+        
+        # Build evidence
+        evidence = {
+            "faers_count": row.get("Count", 0),
+            "severity_score": severity,
+            "quantum_score": row.get("Quantum Score", None),
+            "sources": row.get("Sources", "")
+        }
+        
+        with st.expander(f"🧠 Explain: {reaction}"):
+            explain_button(
+                drug=drug,
+                reaction=reaction,
+                evidence=evidence,
+                severity=severity,
+                novelty_flag=novelty,
+                button_label=f"Explain {reaction}",
+                key=f"explain_signal_{idx}"
+            )
+    
     # Add download button
+    st.markdown("---")
     csv = df.to_csv(index=False)
     st.download_button(
         label="📥 Download as CSV",

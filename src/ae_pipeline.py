@@ -106,6 +106,24 @@ class SocialAEEngine:
             except Exception as e:
                 logger.warning(f"X fetch error: {str(e)}")
         
+        # Fetch from YouTube
+        if "youtube" in platforms:
+            try:
+                from src.social_ae.social_fetcher import fetch_youtube_comments
+                youtube_posts = fetch_youtube_comments(
+                    drug_terms=[drug],
+                    limit_per_term=50,
+                    days_back=days_back
+                )
+                for post in youtube_posts:
+                    post["platform"] = "youtube"
+                    # Track ingestion
+                    if EVIDENCE_GOVERNANCE_AVAILABLE:
+                        post = track_social_ingestion(post)
+                all_posts.extend(youtube_posts)
+            except Exception as e:
+                logger.warning(f"YouTube fetch error: {str(e)}")
+        
         if not all_posts:
             return []
         

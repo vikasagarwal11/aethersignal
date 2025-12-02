@@ -1,19 +1,16 @@
 """
-Mechanism AI Module - Phase 3D
-Biological pathway reasoning and mechanistic explanations.
+Mechanism Module - Export, caching, and batch processing
 """
 
-from .biological_pathway_graph import BiologicalPathwayGraph, PathwayNode, PathwayEdge
-from .mechanistic_chain_generator import MechanisticChainGenerator
-from .llm_mechanistic_reasoner import LLMMechanisticReasoner
-from .mechanistic_plausibility_scorer import MechanisticPlausibilityScorer
+from .mech_exporter import export_json, export_csv, export_parquet, normalize_for_export
+from .cache import MechanismCache
+from .gpu_batch_engine import MechanismGPUEngine
 
 __all__ = [
-    "BiologicalPathwayGraph",
-    "PathwayNode",
-    "PathwayEdge",
-    "MechanisticChainGenerator",
-    "LLMMechanisticReasoner",
-    "MechanisticPlausibilityScorer"
+    "export_json",
+    "export_csv",
+    "export_parquet",
+    "normalize_for_export",
+    "MechanismCache",
+    "MechanismGPUEngine"
 ]
-

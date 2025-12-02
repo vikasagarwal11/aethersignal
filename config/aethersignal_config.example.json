@@ -1,0 +1,23 @@
+{
+  "system_mode": "MVP",
+  "enable_mechanism_ai": true,
+  "enable_quantum_scoring": false,
+  "enable_literature": true,
+  "enable_social": true,
+  "enable_faers": true,
+  "enable_analytics": true,
+  "enable_copilot": true,
+  "enable_workflow": true,
+  "enable_evidence_governance": true,
+  "enable_pricing": false,
+  "api_keys": {
+    "YOUTUBE_API_KEY": "your_youtube_api_key_here",
+    "PUBMED_API_KEY": "your_pubmed_ncbi_api_key_here",
+    "X_API_KEY": "your_x_api_key_here",
+    "OPENAI_API_KEY": "your_openai_api_key_here"
+  },
+  "cache_enabled": true,
+  "gpu_enabled": false,
+  "log_level": "INFO"
+}
+

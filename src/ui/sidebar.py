@@ -210,6 +210,56 @@ def render_sidebar():
     st.markdown("---")
 
     # ------------------------------------------------------------------
+    # 4.5. 📊 Analytics Tools (NEW - Missing panels integration)
+    # ------------------------------------------------------------------
+    data_loaded = st.session_state.data is not None and st.session_state.normalized_data is not None
+    
+    if data_loaded:
+        st.markdown("### 📊 Analytics Tools")
+        st.caption("Advanced analytics and visualization panels")
+        
+        analytics_col1, analytics_col2 = st.columns(2)
+        
+        with analytics_col1:
+            if st.button("📈 Local Trends", key="sidebar_local_trends", use_container_width=True):
+                st.session_state.show_local_trends = True
+                st.session_state.active_tab = "local_trends"
+                st.rerun()
+            
+            if st.button("⚛️ Case Clustering", key="sidebar_case_clustering", use_container_width=True):
+                st.session_state.show_clustering = True
+                st.session_state.active_tab = "case_clustering"
+                st.rerun()
+            
+            if st.button("🔍 Duplicate Signals", key="sidebar_duplicates", use_container_width=True):
+                st.session_state.show_duplicates = True
+                st.session_state.active_tab = "duplicates"
+                st.rerun()
+        
+        with analytics_col2:
+            if st.button("⚖️ Benefit-Risk", key="sidebar_benefit_risk", use_container_width=True):
+                st.session_state.show_benefit_risk = True
+                st.session_state.active_tab = "benefit_risk"
+                st.rerun()
+            
+            if st.button("🔥 Portfolio Trends", key="sidebar_portfolio_trends", use_container_width=True):
+                st.session_state.show_portfolio_trends = True
+                st.session_state.active_tab = "portfolio_trends"
+                st.rerun()
+            
+            if st.button("🛠️ CAPA", key="sidebar_capa", use_container_width=True):
+                st.session_state.show_capa = True
+                st.session_state.active_tab = "capa"
+                st.rerun()
+        
+        if st.button("📊 Executive Dashboard", key="sidebar_executive", use_container_width=True, type="primary"):
+            st.session_state.show_executive_dashboard = True
+            st.session_state.active_tab = "executive"
+            st.rerun()
+        
+        st.markdown("---")
+
+    # ------------------------------------------------------------------
     # 5. 🔍 Advanced search (your existing filters – kept as-is)
     # ------------------------------------------------------------------
     st.markdown(
