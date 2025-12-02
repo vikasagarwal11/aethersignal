@@ -208,8 +208,8 @@ class SafeExecutor:
         return self.safe_execute(_make_request, fallback=_fallback if fallback_value is not None else None)
 
 
-# Global safe executor instance
-_default_executor = SafeExecutor()
+# Global safe executor instance (for backward compatibility)
+_default_executor = SafeExecutor("default", RetryConfig())
 
 
 def safe_fetch(

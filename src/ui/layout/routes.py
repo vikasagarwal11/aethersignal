@@ -2,7 +2,7 @@
 Route Configuration - Defines all pages and navigation structure
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Main navigation routes
 ROUTES: Dict[str, Any] = {
