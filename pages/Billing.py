@@ -1,19 +1,18 @@
 """
 Billing & Subscription Page - Wave 6
 Stripe-ready billing interface
+Protected: org_admin + super_admin only
 """
 
 import streamlit as st
 
-# Restore authentication session
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
+from src.auth.auth import is_authenticated
 from src.ui.top_nav import render_top_nav
+from src.auth.admin_helpers import require_admin
 from src.config.pricing_tiers import PRICING_TIERS, get_tier_info
 from src.security.license_manager import LicenseManager
 from src.utils.config_loader import get_config_value
@@ -23,14 +22,27 @@ st.set_page_config(
     page_title="AetherSignal — Billing & Subscription",
     page_icon="💳",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
 # Apply theme
 apply_theme()
 
-# Top navigation
+# Top navigation - MUST BE FIRST st.* CALL AFTER apply_theme()
 render_top_nav()
+
+# Guard: org admin + super_admin only
+try:
+    require_admin()
+except PermissionError as e:
+    st.title("💳 Billing & Subscription")
+    st.error("🔒 Access Denied")
+    st.info(
+        "Billing is only available to organization administrators or platform owners. "
+        "If you believe you should have access, please contact your admin or AetherSignal support."
+    )
+    st.stop()
 
 # Check if pricing is enabled
 pricing_enabled = get_config_value("enable_pricing", False)

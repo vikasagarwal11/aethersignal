@@ -426,7 +426,7 @@ def _render_chat_input(on_send_callback):
     
     with cols[0]:
         user_message = st.text_area(
-            label="",
+            label="Chat message",
             value=st.session_state.chat_text_input,
             placeholder="Ask about any drug, reaction, or safety signal...",
             height=46,

@@ -11,12 +11,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Restore authentication session first, before anything else
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
@@ -32,7 +28,8 @@ st.set_page_config(
     page_title="AetherSignal – AE Explorer",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
 # -------------------------------------------------------------------
@@ -41,7 +38,7 @@ st.set_page_config(
 apply_theme()
 
 # -------------------------------------------------------------------
-# TOP NAVIGATION
+# TOP NAVIGATION - MUST BE FIRST st.* CALL AFTER apply_theme()
 # -------------------------------------------------------------------
 render_top_nav()
 

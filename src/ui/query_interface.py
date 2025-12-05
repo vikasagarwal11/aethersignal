@@ -304,7 +304,7 @@ def _build_suggestions_panel(normalized_df, on_send_callback):
     starter_questions, top_drugs, top_reactions, all_drugs, all_reactions = _build_dynamic_starter_questions(
         normalized_df
     )
-    
+
     # Create tabs for different suggestion categories
     suggestion_tabs = st.tabs([
         "⭐ Starter Prompts",
@@ -433,7 +433,7 @@ def render_nl_query_tab(normalized_df):
         st.session_state.run_in_progress = False
     
     st.markdown("### 💬 Chat-Based Safety Search")
-    
+
     # Try to load data from database if not in session state
     if st.session_state.get("normalized_data") is None:
         try:
@@ -451,14 +451,14 @@ def render_nl_query_tab(normalized_df):
                     if df_from_db is not None and not df_from_db.empty:
                         st.session_state.normalized_data = df_from_db
                         st.session_state.data = df_from_db
-                        normalized_df = df_from_db  # Update local reference
+                    normalized_df = df_from_db  # Update local reference
         except Exception:
             pass
-    
+        
     # Check if data is available
     data_available = (
-        st.session_state.data is not None
-        and st.session_state.normalized_data is not None
+            st.session_state.data is not None
+            and st.session_state.normalized_data is not None
         and normalized_df is not None
         and not normalized_df.empty
     )
@@ -585,7 +585,7 @@ def render_nl_query_tab(normalized_df):
                 route_query,
                 12.0,
                 query,
-                normalized_df,
+                        normalized_df, 
                 use_llm
             )
             
@@ -658,7 +658,7 @@ def render_nl_query_tab(normalized_df):
                 if "quick_results" in metadata:
                     st.session_state.last_quick_results = metadata["quick_results"]
                 
-                # Save to query history
+                # Save to query history (session + database)
                 history = st.session_state.get("query_history", [])
                 history.append({
                     "query_text": query,
@@ -666,6 +666,30 @@ def render_nl_query_tab(normalized_df):
                     "source": "chat_fast",
                 })
                 st.session_state.query_history = history[-10:]
+                
+                # Also persist to database
+                try:
+                    from src.auth.auth import is_authenticated, get_current_user
+                    from src.query_persistence import save_query_to_history
+                    import time
+                    
+                    if is_authenticated():
+                        user = get_current_user()
+                        if user:
+                            user_id = user.get('user_id')
+                            organization = user.get('organization', '')
+                            
+                            save_query_to_history(
+                                user_id=user_id,
+                                organization=organization,
+                                query_text=query,
+                                filters=st.session_state.get("last_filters"),
+                                source="nl",
+                                results_count=len(filtered_df) if 'filtered_df' in locals() else None,
+                                execution_time_ms=None
+                            )
+                except Exception:
+                    pass  # Don't break query execution if persistence fails
                 
                 status_box.empty()
                 st.session_state.run_in_progress = False
@@ -1604,7 +1628,7 @@ def render_nl_query_tab_OLD(normalized_df):
                     st.rerun()
         else:
             st.caption("Upload data to see suggestions.")
-    
+
     with row1_col2:
         st.markdown("**💊 Top Drugs**")
         if top_drugs:
@@ -1647,9 +1671,9 @@ def render_nl_query_tab_OLD(normalized_df):
                             new_q = f"{current} OR {drug_terms}".strip() if current else f"Show cases with {drug_terms}"
                             st.session_state.query_text = new_q
                             st.rerun()
-        else:
-            st.caption("No drug data available.")
-    
+                        else:
+                            st.caption("No drug data available.")
+        
     with row1_col3:
         st.markdown("**⚠️ Top Reactions**")
         if top_reactions:
@@ -1696,10 +1720,10 @@ def render_nl_query_tab_OLD(normalized_df):
                                 new_q = f"{current} {reaction_terms}".strip() if current else f"Show cases with {reaction_terms}"
                             st.session_state.query_text = new_q
                             st.rerun()
-        else:
-            st.caption("No reaction data available.")
-    
-    st.markdown("---")
+                        else:
+                            st.caption("No reaction data available.")
+
+        st.markdown("---")
     
     # Row 2: Saved Queries | Recent Queries (2 columns)
     row2_col1, row2_col2 = st.columns(2)
@@ -1717,7 +1741,7 @@ def render_nl_query_tab_OLD(normalized_df):
                     st.session_state.last_query_source = "saved"
                     st.session_state.show_results = True
                     st.rerun()
-            
+
             # Save current query (compact)
             with st.expander("💾 Save Current Query", expanded=False):
                 save_name = st.text_input(
@@ -1767,7 +1791,7 @@ def render_nl_query_tab_OLD(normalized_df):
                     st.session_state.saved_queries = saved[-15:]
                     st.success(f"✅ Saved: {name}")
                     st.rerun()
-    
+            
     with row2_col2:
         st.markdown("**🕒 Recent Queries**")
         history = st.session_state.get("query_history", [])
@@ -1788,7 +1812,7 @@ def render_nl_query_tab_OLD(normalized_df):
         else:
             st.caption("No recent queries.")
     
-    st.markdown("---")
+            st.markdown("---")
     
     # Row 3: Main Query Input Section (full width)
     st.markdown("### 💬 Ask a question")
@@ -1825,7 +1849,7 @@ def render_nl_query_tab_OLD(normalized_df):
     
     st.markdown('<div class="query-textarea-wrapper">', unsafe_allow_html=True)
     query_text = st.text_area(
-        "",
+        "Query input",
         value=st.session_state.get(
             "query_text", st.session_state.get("last_query_text", "")
         ),
@@ -1913,8 +1937,8 @@ def render_nl_query_tab_OLD(normalized_df):
                             else:
                                 # Correction resulted in same query - don't show or apply
                                 applied_corrections = None
-                    else:
-                        st.warning("⏱️ Query correction timed out, skipping...")
+                        else:
+                            st.warning("⏱️ Query correction timed out, skipping...")
 
                 # Use hybrid router (rule-based first, LLM fallback if enabled) - with timeout check
                 if time.time() - start_time < timeout_seconds:

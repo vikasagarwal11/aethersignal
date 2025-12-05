@@ -5,12 +5,8 @@ Full-page module for exploring social media adverse events.
 
 import streamlit as st
 
-# Restore authentication session first, before anything else
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.app_helpers import initialize_session
@@ -18,27 +14,8 @@ from src.ui.top_nav import render_top_nav
 from src.ui.header import render_header, render_banner
 from src.social_ae import render_social_ae_module
 
-# -------------------------------------------------------------------
-# Sidebar actions listener helpers
-# -------------------------------------------------------------------
-def _handle_nav_actions():
-    nav_action = st.session_state.get("nav_action")
-    if nav_action == "login":
-        st.switch_page("pages/Login.py")
-    elif nav_action == "register":
-        st.switch_page("pages/Register.py")
-    elif nav_action == "profile":
-        st.switch_page("pages/Profile.py")
-    elif nav_action == "logout":
-        try:
-            from src.auth.auth import logout_user
-            logout_user()
-        except Exception:
-            pass
-        st.session_state.nav_action = None
-        st.rerun()
-    if "nav_action" in st.session_state:
-        st.session_state.nav_action = None
+# PHASE 1.2: Navigation action handling is now centralized in nav_handler.py
+# No need for _handle_nav_actions() here - it's called from render_top_nav()
 
 # -------------------------------------------------------------------
 # Page configuration
@@ -48,6 +25,7 @@ st.set_page_config(
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded",  # Changed to expanded so sidebar toggle is always visible
+    menu_items=None,
 )
 
 
@@ -58,15 +36,15 @@ apply_theme()
 
 
 # -------------------------------------------------------------------
+# TOP NAVIGATION - MUST BE FIRST st.* CALL AFTER apply_theme()
+# -------------------------------------------------------------------
+render_top_nav()
+
+
+# -------------------------------------------------------------------
 # Initialize session state
 # -------------------------------------------------------------------
 initialize_session()
-
-
-# -------------------------------------------------------------------
-# TOP NAVIGATION
-# -------------------------------------------------------------------
-render_top_nav()
 
 # Check authentication (optional for Social AE - can be public)
 # Uncomment below if you want to require authentication for Social AE
@@ -91,11 +69,6 @@ st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 # -------------------------------------------------------------------
 render_header(page_type="social")
 render_banner()
-
-with st.sidebar:
-    from src.ui import sidebar
-    sidebar.render_sidebar()
-    _handle_nav_actions()
 
 
 # -------------------------------------------------------------------

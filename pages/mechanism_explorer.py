@@ -6,17 +6,44 @@ import streamlit as st
 import pandas as pd
 from typing import Optional, List, Dict, Any
 
+# MUST BE IN EVERY PAGE — Streamlit does NOT inherit config
+st.set_page_config(
+    page_title="AetherSignal — Mechanism Explorer",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
+)
+
+from src.styles import apply_theme
+apply_theme()
+
+from src.ui.top_nav import render_top_nav
+render_top_nav()  # MUST BE FIRST st.* CALL AFTER apply_theme()
+
 # Import knowledge graph components
-from src.knowledge_graph.mechanism_supervisor import MechanismSupervisor
-from src.knowledge_graph.pathway_graph_builder import PathwayGraphBuilder
-from src.knowledge_graph.evidence_ranker import EvidenceRanker
+try:
+    from src.knowledge_graph.mechanism_supervisor import MechanismSupervisor
+    from src.knowledge_graph.pathway_graph_builder import PathwayGraphBuilder
+    from src.knowledge_graph.evidence_ranker import EvidenceRanker
+    IMPORTS_AVAILABLE = True
+except ImportError as e:
+    IMPORTS_AVAILABLE = False
+    import traceback
+    ERROR_MESSAGE = f"Failed to import knowledge graph components: {e}\n{traceback.format_exc()}"
 
 # Import UI components
-from src.ui.mechanism.alert_panel import mechanistic_alert_panel
-from src.ui.mechanism.embedding_panel import embedding_panel
-from src.ui.mechanism.pathway_graph_section import pathway_graph_section
-from src.ui.mechanism.components import kpi_tile, mechanism_card
-from src.ui.layout.base_layout import render_base_layout
+try:
+    from src.ui.mechanism.alert_panel import mechanistic_alert_panel
+    from src.ui.mechanism.embedding_panel import embedding_panel
+    from src.ui.mechanism.pathway_graph_section import pathway_graph_section
+    from src.ui.mechanism.components import kpi_tile, mechanism_card
+    from src.ui.layout.base_layout import render_base_layout
+    UI_IMPORTS_AVAILABLE = True
+except ImportError as e:
+    UI_IMPORTS_AVAILABLE = False
+    import traceback
+    UI_ERROR_MESSAGE = f"Failed to import UI components: {e}\n{traceback.format_exc()}"
 
 
 def _get_supervisor() -> Optional[MechanismSupervisor]:
@@ -72,6 +99,19 @@ def render_mechanism_explorer():
     def page_content():
         st.title("🧠 Mechanism Explorer")
         st.caption("AI-powered mechanistic intelligence for drug safety analysis")
+        
+        # Check if imports are available
+        if not IMPORTS_AVAILABLE:
+            st.error("❌ **Import Error**")
+            st.code(ERROR_MESSAGE, language="python")
+            st.info("Please check that all required knowledge graph components are installed.")
+            return
+        
+        if not UI_IMPORTS_AVAILABLE:
+            st.error("❌ **UI Import Error**")
+            st.code(UI_ERROR_MESSAGE, language="python")
+            st.info("Please check that all required UI components are installed.")
+            return
         
         # Get supervisor
         supervisor = _get_supervisor()
@@ -229,3 +269,15 @@ def render_mechanism_explorer():
     
     render_base_layout(page_content)
 
+
+# Call the render function at module level (required for Streamlit pages)
+try:
+    render_mechanism_explorer()
+except Exception as e:
+    import traceback
+    st.error(f"❌ **Error loading Mechanism Explorer**")
+    st.exception(e)
+    st.code(traceback.format_exc(), language="python")
+    # Fallback minimal page
+    st.title("🧠 Mechanism Explorer")
+    st.info("This page requires knowledge graph components to be properly initialized.")

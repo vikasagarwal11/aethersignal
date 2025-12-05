@@ -244,7 +244,7 @@ def _render_case_details(df: pd.DataFrame) -> None:
         narrative = case_row.get("narrative") or case_row.get("case_narrative", "")
         if narrative and str(narrative) != "nan":
             st.markdown("**📝 Narrative**")
-            st.text_area("", value=str(narrative), height=150, disabled=True, key=f"narrative_{selected_case}")
+            st.text_area("Case narrative", value=str(narrative), height=150, disabled=True, key=f"narrative_{selected_case}", label_visibility="collapsed")
             
             # AI narrative analysis (if LLM enabled)
             use_llm = st.session_state.get("use_llm", False)

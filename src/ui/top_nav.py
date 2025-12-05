@@ -1,117 +1,300 @@
 """
-Top navigation bar component for AetherSignal.
-Provides a fixed navigation bar across all pages.
-FIXED: Navigation positioning and click handling
+Top navigation bar for AetherSignal.
+The component now consumes the shared route map, renders dropdowns,
+and automatically injects the global sidebar unless a page opts out.
 """
+
+from typing import Dict, List, Optional, Tuple
 
 import streamlit as st
 
+from src.auth.admin_helpers import is_admin, is_super_admin
+from src.auth.auth import get_current_user, is_authenticated
+from src.ui.layout.routes import get_admin_routes, get_primary_routes, page_exists
+from src.ui.nav_handler import handle_nav_actions
 
-def render_top_nav() -> None:
-    """Render fixed top navigation bar with page links."""
+SIDEBAR_FLAG = "_aether_sidebar_drawn"
+
+
+def _is_allowed(route_config: Dict, is_auth: bool, user_roles: List[str]) -> bool:
+    requires_auth = route_config.get("requires_auth", True)
+    route_roles = route_config.get("roles", [])
+    role_ok = not route_roles or (user_roles and any(role in user_roles for role in route_roles))
+    return (not requires_auth or is_auth) and role_ok
+
+
+def render_top_nav(auto_render_sidebar: bool = True) -> None:
+    """Render the top navigation bar and (optionally) the sidebar."""
+    # Reset sidebar flag each rerun so we can re-render
+    st.session_state[SIDEBAR_FLAG] = False
     
-    # Check authentication status
+    # Handle any pending nav actions first
     try:
-        from src.auth.auth import is_authenticated, get_current_user, logout_user
-        
+        handle_nav_actions()
+    except Exception:
+        pass
+
+    current_page = st.session_state.get("current_page", "")
+
+    # Authentication context
+    try:
         is_auth = is_authenticated()
         user = get_current_user() if is_auth else None
-        
-        # Generate auth buttons HTML
-        if is_auth and user:
-            # Show user menu with email first, then Profile/Logout
-            user_email = user.get('email', 'User')
-            auth_buttons_html = f'''
-                <div class="nav-user-menu" style="display: flex; align-items: center; gap: 1rem; margin-left: 1rem;">
-                    <span style="color: #94a3b8; font-size: 0.9rem;">{user_email}</span>
-                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'profile'}}, '*'); return false;" style="font-size: 0.9rem;">👤 Profile</a>
-                    <a class="nav-link" href="#" onclick="window.parent.postMessage({{type: 'streamlit:setComponentValue', key: 'nav_action', value: 'logout'}}, '*'); return false;" style="font-size: 0.9rem;">🚪 Logout</a>
-                </div>
-            '''
-        else:
-            # Show login/register buttons
-            auth_buttons_html = '''
-                <div class="nav-auth-buttons" style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem;">
-                    <a class="nav-link" href="#" onclick="window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'nav_action', value: 'login'}, '*'); return false;" style="font-size: 0.9rem;">?? Login</a>
-                    <a class="nav-link" href="#" onclick="window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'nav_action', value: 'register'}, '*'); return false;" style="font-size: 0.9rem; background: rgba(59,130,246,0.2); padding: 0.4rem 0.8rem; border-radius: 6px;">?? Register</a>
-                </div>
-            '''
+        user_email = user.get("email", "User") if isinstance(user, dict) else "User"
+        user_roles: List[str] = []
+        if is_auth:
+            if is_super_admin():
+                user_roles.append("super_admin")
+            if is_admin():
+                user_roles.append("admin")
     except Exception:
-        # Auth not available - show no auth buttons
-        auth_buttons_html = ''
+        is_auth = False
+        user = None
+        user_email = "User"
+        user_roles = []
+
+    # Load routes
+    try:
+        filtered_routes = get_primary_routes(require_auth=None, user_roles=user_roles or None)
+        admin_routes = get_admin_routes(user_roles=user_roles or None)
+    except Exception as exc:
+        st.error(f"Navigation error: {exc}")
+        filtered_routes = {}
+        admin_routes = {}
+
+    _render_nav_styles()
+
+    # CRITICAL: Wrap entire nav in aether-top-nav-outer div for full-width CSS to work
+    st.markdown('<div class="aether-top-nav-outer">', unsafe_allow_html=True)
+    home_col, nav_col, profile_col = st.columns([1.5, 9, 2.5])
+
+    with home_col:
+        if st.button("🏠 AetherSignal", use_container_width=True, key="top_nav_home"):
+            st.switch_page("app.py")
+
+    with nav_col:
+        route_entries = _collect_top_routes(filtered_routes)
+        if not route_entries:
+            st.caption("No routes available for this account.")
+        else:
+            weights = _compute_column_weights([name for name, _ in route_entries])
+            nav_cols = st.columns(weights)
+            for idx, (route_name, route_config) in enumerate(route_entries):
+                with nav_cols[idx]:
+                    _render_route_entry(
+                        route_name=route_name,
+                        route_config=route_config,
+                        is_auth=is_auth,
+                        user_roles=user_roles,
+                        current_page=current_page,
+                    )
+
+    with profile_col:
+        _render_profile_area(is_auth, user, user_email, admin_routes)
+
+    # Close the wrapper div
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
     
-    # Build navigation HTML separately to avoid f-string issues with CSS
-    nav_content = f'''<div class="aether-top-nav"><a class="nav-left" href="/" data-nav="home" target="_self"><span class="nav-icon">⚛️</span> <strong>AetherSignal</strong></a><div class="nav-right"><a class="nav-link" href="/" data-nav="home" target="_self">🏠 Home</a><a class="nav-link" href="/Quantum_PV_Explorer" data-nav="quantum" target="_self">⚛️ Quantum PV</a><a class="nav-link" href="/Social_AE_Explorer" data-nav="social" target="_self">🌐 Social AE</a>{auth_buttons_html}</div></div>'''
-    
-    st.markdown("""
+    if auto_render_sidebar:
+        _render_global_sidebar()
+
+
+def _render_nav_styles() -> None:
+    """Inject CSS for the nav layout."""
+    st.markdown(
+        """
     <style>
-    /* Fixed top nav below the Streamlit header */
-    .aether-top-nav {
+    /* Fixed navigation bar - spans full viewport width, never disappears */
+    /* Uses both fixed position AND container break-out for maximum compatibility */
+    /* TOP NAVIGATION BAR: Full viewport width on ALL pages */
+    /* Fixed positioning breaks out of all containers */
+    .aether-top-nav-outer {
         position: fixed !important;
-        top: 60px !important;
+        top: 0 !important;
         left: 0 !important;
         right: 0 !important;
-        height: 70px !important;
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-        z-index: 999980 !important;
-        padding: 0 3rem !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        border-bottom: 1px solid #334155 !important;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
-        color: white !important;
-        pointer-events: auto !important;
+        width: 100vw !important;
+        z-index: 999999 !important;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        padding: 0.9rem 2rem !important;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.35);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        box-sizing: border-box;
+        max-width: none !important;
+        min-width: 100vw !important;
     }
     
-    .nav-left {
-        font-size: 1.6rem !important;
-        font-weight: 700 !important;
-        color: white !important;
-        cursor: pointer !important;
-        pointer-events: auto !important;
-        user-select: none !important;
-        text-decoration: none !important;
+    /* Add space for fixed nav bar - prevents content from hiding behind it */
+    div[data-testid="stAppViewContainer"] {
+        padding-top: 70px !important;
     }
     
-    .nav-left:hover {
-        text-decoration: none !important;
+    /* Ensure sidebar appears above content but below nav bar */
+    section[data-testid="stSidebar"] {
+        z-index: 999998 !important;
+        padding-top: 70px !important;
     }
     
-    .nav-left .nav-icon {
-        text-decoration: none !important;
-        display: inline-block;
+    /* Ensure parent containers don't clip */
+    .aether-top-nav-outer,
+    .aether-top-nav-outer * {
+        box-sizing: border-box;
     }
     
-    .nav-right {
-        display: flex !important;
-        gap: 2.5rem !important;
-        pointer-events: auto !important;
+    /* Navigation columns container - prevent wrapping and enable horizontal scroll */
+    .aether-top-nav-outer div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        -webkit-overflow-scrolling: touch;
+        gap: 0.5rem !important;
+        max-width: 100% !important;
     }
     
-    .nav-link {
-        color: #94a3b8 !important;
-        text-decoration: none !important;
-        font-weight: 500 !important;
-        padding: 0.5rem 1rem !important;
-        border-bottom: 3px solid transparent !important;
-        transition: all 0.3s !important;
-        cursor: pointer !important;
-        pointer-events: auto !important;
-        user-select: none !important;
+    /* Hide scrollbar but keep functionality */
+    .aether-top-nav-outer div[data-testid="stHorizontalBlock"]::-webkit-scrollbar {
+        height: 4px;
+    }
+    
+    .aether-top-nav-outer div[data-testid="stHorizontalBlock"]::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.3);
+        border-radius: 2px;
+    }
+    
+    /* Ensure columns don't shrink and buttons stay visible */
+    .aether-top-nav-outer div[data-testid="column"] {
+        min-width: fit-content !important;
+        flex-shrink: 0 !important;
+        /* Don't stretch columns - prevents blank space below buttons */
+        align-items: flex-start !important;
+        display: block !important;
+    }
+    
+    /* Remove flex stretching that creates blank space */
+    .aether-top-nav-outer div[data-testid="column"] > div {
+        width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        /* Prevent any stretching that creates blank space */
+        flex-grow: 0 !important;
+    }
+    
+    /* Ensure nested columns (Login/Register buttons) stay horizontal */
+    .aether-top-nav-outer div[data-testid="column"] div[data-testid="stHorizontalBlock"] {
+        height: auto !important;
+        min-height: auto !important;
+        /* Prevent vertical stacking */
+        flex-wrap: nowrap !important;
+    }
+    
+    /* Remove blank space from nested column containers (Login/Register buttons) */
+    .aether-top-nav-outer div[data-testid="column"] div[data-testid="column"] {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+        height: auto !important;
+        /* Prevent vertical stacking - ensure horizontal layout */
+        flex-wrap: nowrap !important;
+        display: inline-block !important;
+        vertical-align: top !important;
+    }
+    
+    /* Remove blank space from button containers */
+    .aether-top-nav-outer div[data-testid="column"] div[data-testid="stButton"],
+    .aether-top-nav-outer div[data-testid="stButton"] {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+        height: auto !important;
         display: inline-block !important;
     }
     
-    .nav-link:hover {
-        color: white !important;
+    /* Ensure Login/Register button columns container doesn't wrap */
+    .aether-top-nav-outer div[data-testid="column"]:last-child div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        height: auto !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
     }
     
-    .nav-link.active {
-        color: #60a5fa !important;
-        border-bottom: 3px solid #60a5fa !important;
+    /* FIX: Prevent Register button double-height bug - force equal column heights */
+    .aether-top-nav-outer div[data-testid="column"]:last-child div[data-testid="stHorizontalBlock"] > div {
+        height: auto !important;
+        min-height: auto !important;
+        max-height: fit-content !important;
+        align-items: flex-start !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    
+    /* Ensure Login/Register button columns don't stretch beyond button height */
+    .aether-top-nav-outer div[data-testid="column"]:last-child div[data-testid="column"] {
+        height: auto !important;
+        max-height: 2.5rem !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    
+    /* Ensure buttons inside columns don't create extra space */
+    .aether-top-nav-outer div[data-testid="column"]:last-child div[data-testid="column"] > div {
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    
+    /* Main nav column should take available space */
+    .aether-top-nav-outer div[data-testid="column"]:nth-child(2) {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        overflow: visible !important;
     }
 
-    /* Always-visible sidebar reopen helper */
+    .aether-top-nav-outer div[data-testid="column"] button {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #e2e8f0 !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        font-weight: 600 !important;
+        border-radius: 10px !important;
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        padding: 0.45rem 0.75rem !important;
+        font-size: 0.9rem !important;
+        min-width: fit-content !important;
+        width: auto !important;
+        /* Ensure consistent height for all buttons (primary and secondary) */
+        height: auto !important;
+        min-height: 2.5rem !important;
+        max-height: 2.5rem !important;
+        line-height: 1.5 !important;
+        box-sizing: border-box !important;
+        /* Remove any extra space below buttons */
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    
+    /* Override Streamlit's default primary button styling to match secondary */
+    .aether-top-nav-outer div[data-testid="column"] button[kind="primary"],
+    .aether-top-nav-outer div[data-testid="column"] button[data-baseweb="button"][kind="primary"] {
+        height: auto !important;
+        min-height: 2.5rem !important;
+        max-height: 2.5rem !important;
+        padding: 0.45rem 0.75rem !important;
+        line-height: 1.5 !important;
+        margin-bottom: 0 !important;
+    }
+
+    .aether-top-nav-outer div[data-testid="column"] button:hover {
+        background: rgba(255, 255, 255, 0.16) !important;
+        border-color: rgba(255, 255, 255, 0.28) !important;
+        box-shadow: 0 6px 16px rgba(15, 23, 42, 0.45) !important;
+    }
+
+    .aether-top-nav-outer .stPopover {
+        width: 260px !important;
+    }
+
+    /* Sidebar toggle helper */
     #aether-sidebar-reopen {
         position: fixed;
         top: 12px;
@@ -130,221 +313,172 @@ def render_top_nav() -> None:
         color: #fff;
         box-shadow: 0 6px 16px rgba(0,0,0,0.45);
     }
-    
-    @media (max-width: 768px) {
-        .aether-top-nav {
-            padding: 0 1rem;
-        }
-        .nav-right {
-            gap: 1rem;
-        }
-        .nav-link {
-            font-size: 0.9rem;
-        }
-        .nav-left {
-            font-size: 1.4rem;
-        }
-    }
     </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
-    <button id="aether-sidebar-reopen" title="Toggle navigation">☰</button>
-
+    st.markdown(
+        """
+    <div id="aether-sidebar-reopen-container"></div>
     <script>
     (function() {
-        'use strict';
-        
-        // Highlight active page with error handling
-        function highlightActivePage() {
+        const container = document.getElementById('aether-sidebar-reopen-container');
+        if (!container || document.getElementById('aether-sidebar-reopen')) {
+            return;
+        }
+        const button = document.createElement('button');
+        button.id = 'aether-sidebar-reopen';
+        button.title = 'Toggle navigation';
+        button.innerHTML = '☰';
+        button.onclick = function() {
             try {
-            const path = window.location.pathname;
-            const links = document.querySelectorAll('.nav-link');
-                
-                if (!links || links.length === 0) return;
-            
-            links.forEach(link => {
-                    if (link && link.classList) {
-                link.classList.remove('active');
-                    }
-            });
-            
-            if (path === '/' || path === '' || path.includes('app.py')) {
-                    const homeLink = Array.from(links).find(l => l && l.textContent && l.textContent.includes('Home'));
-                    if (homeLink && homeLink.classList) homeLink.classList.add('active');
-            } else if (path.includes('Quantum_PV_Explorer')) {
-                    const quantumLink = Array.from(links).find(l => l && l.textContent && l.textContent.includes('Quantum PV'));
-                    if (quantumLink && quantumLink.classList) quantumLink.classList.add('active');
-            } else if (path.includes('Social_AE_Explorer')) {
-                    const socialLink = Array.from(links).find(l => l && l.textContent && l.textContent.includes('Social AE'));
-                    if (socialLink && socialLink.classList) socialLink.classList.add('active');
-            }
-            } catch (e) {
-                // Gracefully handle errors without cluttering console
-                if (window.console && console.warn) {
-                    console.warn('Navigation highlight error (non-critical):', e.message);
-                }
-            }
-        }
-        
-        // Initialize on page load
-        function initNavigation() {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', highlightActivePage);
-        } else {
-            highlightActivePage();
-        }
-        }
-        
-        initNavigation();
-        
-        // Debounced highlight function to prevent excessive calls
-        let highlightTimeout;
-        const debouncedHighlight = () => {
-            clearTimeout(highlightTimeout);
-            highlightTimeout = setTimeout(highlightActivePage, 200);
+                const toggler = document.querySelector('button[aria-label*="sidebar"], button[aria-label*="menu"]');
+                if (toggler) toggler.click();
+            } catch(e) {}
         };
-        
-        // Optimized MutationObserver - only watch navigation container
-        let observer;
-        function setupObserver() {
-            try {
-                const navContainer = document.querySelector('.aether-top-nav');
-                if (navContainer && window.MutationObserver) {
-                    observer = new MutationObserver((mutations) => {
-                        // Only react to changes in navigation links
-                        const hasNavChange = mutations.some(mutation => {
-                            if (mutation.type !== 'childList') return false;
-                            const target = mutation.target;
-                            return target && (
-                                target.classList?.contains('nav-link') ||
-                                target.classList?.contains('nav-right') ||
-                                target.closest?.('.aether-top-nav')
-                            );
-                        });
-                        if (hasNavChange) {
-                            debouncedHighlight();
-                        }
-                    });
-                    observer.observe(navContainer, { 
-                        childList: true, 
-                        subtree: true,
-                        attributes: false 
-                    });
-                }
-            } catch (e) {
-                // Observer setup failed - non-critical
-            }
-        }
-        
-        // Setup observer after a short delay to ensure DOM is ready
-        setTimeout(setupObserver, 100);
-        
-        // Re-highlight after Streamlit reruns (with debouncing)
-        if (window.parent && window.parent.postMessage) {
-            const originalRerun = window.parent.postMessage;
-            // Note: We can't intercept Streamlit's rerun, so we use the observer instead
-        }
-
-        // Wire the sidebar toggle button
-        function setupSidebarToggle() {
-            try {
-                const helperBtn = document.getElementById('aether-sidebar-reopen');
-        if (helperBtn) {
-                    helperBtn.addEventListener('click', function() {
-                        try {
-                            const toggler = document.querySelector(
-                                'button[aria-label*="sidebar"], ' +
-                                'button[aria-label*="menu"], ' +
-                                'button[kind="header"]'
-                            );
-                            if (toggler && toggler.click) {
-                                toggler.click();
-                            }
-                        } catch (e) {
-                            // Non-critical error
-                        }
-                    });
-                }
-            } catch (e) {
-                // Non-critical error
-            }
-        }
-        
-        // Setup sidebar toggle after DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', setupSidebarToggle);
-        } else {
-            setupSidebarToggle();
-        }
-        
-        // Handle navigation clicks - use Streamlit's page routing
-        // Note: Streamlit pages are accessed via their filename (without .py) in the URL
-        function setupNavigationClicks() {
-            try {
-                const navLinks = document.querySelectorAll('.nav-link, .nav-left');
-                navLinks.forEach(link => {
-                    link.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        const dataNav = this.getAttribute('data-nav');
-                        const href = this.getAttribute('href');
-                        
-                        // Map to Streamlit page paths (without numeric prefixes)
-                        let targetUrl = href || '/';
-                        if (dataNav === 'quantum') {
-                            targetUrl = '/Quantum_PV_Explorer';
-                        } else if (dataNav === 'social') {
-                            targetUrl = '/Social_AE_Explorer';
-                        } else if (dataNav === 'home') {
-                            targetUrl = '/';
-                        }
-                        
-                        // Navigate in the same window using Streamlit's routing
-                        window.location.href = targetUrl;
-                        return false;
-                    });
-                });
-            } catch (e) {
-                console.warn('Navigation setup error:', e);
-            }
-        }
-        
-        // Setup navigation clicks
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', setupNavigationClicks);
-        } else {
-            setupNavigationClicks();
-        }
+        container.appendChild(button);
     })();
     </script>
-    """ + nav_content + """
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
+
+
+def _collect_top_routes(filtered_routes: Dict[str, Dict]) -> List[Tuple[str, Dict]]:
+    routes: List[Tuple[str, Dict]] = []
+    for route_name, route_config in filtered_routes.items():
+        nav_location = route_config.get("nav_location", "both")
+        if nav_location not in {"top", "both"}:
+            continue
+        if not route_config.get("visible_in_nav", True):
+            continue
+        routes.append((route_name, route_config))
+    return routes
+
+
+def _compute_column_weights(route_names: List[str]) -> List[int]:
+    weights: List[int] = []
+    for name in route_names:
+        weights.append(max(4, len(name) // 2 + 2))
+    return weights
+
+
+def _render_route_entry(
+    route_name: str,
+    route_config: Dict,
+    is_auth: bool,
+    user_roles: List[str],
+    current_page: str,
+) -> None:
+    icon = route_config.get("icon", "•")
+    label = f"{icon} {route_name}"
+    subpages = route_config.get("subpages", {})
+    page = route_config.get("page")
+    page_valid = page_exists(page)
+    allowed = _is_allowed(route_config, is_auth, user_roles) and (page_valid or bool(subpages))
+
+    if subpages:
+        visible_subpages = [
+            (name, config) for name, config in subpages.items() if config.get("visible_in_nav", True)
+        ]
+        if not visible_subpages:
+            st.button(label, use_container_width=True, disabled=True, key=f"top_nav_no_sub_{route_name.lower().replace(' ', '_')}")
+            return
+
+        with st.popover(label, use_container_width=True):
+            for subpage_name, subpage_config in visible_subpages:
+                _render_subpage_button(
+                    route_name=route_name,
+                    subpage_name=subpage_name,
+                    subpage_config=subpage_config,
+                    is_auth=is_auth,
+                    user_roles=user_roles,
+                    current_page=current_page,
+                )
+    else:
+        if not page_valid:
+            st.button(f"{label} · coming soon", use_container_width=True, disabled=True, key=f"top_nav_soon_{page}")
+            return
+
+        is_active = current_page == page
+        btn_type = "primary" if is_active else "secondary"
+        if st.button(label, use_container_width=True, type=btn_type, disabled=not allowed, key=f"top_nav_{page}"):
+            st.switch_page(f"pages/{page}.py")
+
+
+def _render_subpage_button(
+    route_name: str,
+    subpage_name: str,
+    subpage_config: Dict,
+    is_auth: bool,
+    user_roles: List[str],
+    current_page: str,
+) -> None:
+    sub_page = subpage_config.get("page")
+    sub_route = subpage_config.get("route", subpage_name.lower().replace(" ", "_"))
+    sub_icon = subpage_config.get("icon", "•")
+    sub_exists = page_exists(sub_page)
+    coming_soon = subpage_config.get("coming_soon", False) or not sub_exists
+    allowed = _is_allowed(subpage_config, is_auth, user_roles) and sub_exists
+    is_active = current_page == sub_page
+    btn_type = "primary" if is_active else "secondary"
+    label = f"{sub_icon} {subpage_name}"
+    if coming_soon:
+        label += " · coming soon"
     
-    # Handle navigation actions for authentication
+    # Use route_name + sub_route for unique key (works even when sub_page is None)
+    unique_key = f"top_nav_{route_name.lower().replace(' ', '_')}_{sub_route}"
+
+    if st.button(label, use_container_width=True, disabled=not allowed or coming_soon, type=btn_type, key=unique_key):
+        if sub_page:
+            st.switch_page(f"pages/{sub_page}.py")
+
+
+def _render_profile_area(is_auth: bool, user: Optional[Dict], user_email: str, admin_routes: Dict[str, Dict]) -> None:
+    if is_auth and user:
+        profile_label = f"👤 {user_email[:24]}"
+        with st.popover(profile_label, use_container_width=True):
+            st.markdown("**Account**")
+            if st.button("👤 Profile", use_container_width=True, key="top_nav_profile"):
+                st.switch_page("pages/Profile.py")
+            st.divider()
+
+            if admin_routes:
+                st.markdown("**Admin Tools**")
+                for idx, (admin_name, admin_config) in enumerate(admin_routes.items()):
+                    admin_page = admin_config.get("page")
+                    if not page_exists(admin_page):
+                        continue
+                    admin_label = f"{admin_config.get('icon', '🛠️')} {admin_name}"
+                    if st.button(admin_label, use_container_width=True, key=f"top_nav_admin_{idx}"):
+                        st.switch_page(f"pages/{admin_page}.py")
+                st.divider()
+
+            if st.button("🚪 Logout", use_container_width=True, type="secondary", key="top_nav_logout"):
+                st.session_state.nav_action = "logout"
+    else:
+        # Use a more compact layout to prevent vertical stacking
+        login_col, register_col = st.columns([1, 1], gap="small")
+        with login_col:
+            if st.button("🔐 Login", use_container_width=True, key="top_nav_login"):
+                st.switch_page("pages/Login.py")
+        with register_col:
+            if st.button("📝 Register", use_container_width=True, type="primary", key="top_nav_register"):
+                st.switch_page("pages/Register.py")
+
+
+def _render_global_sidebar() -> None:
+    """Render the sidebar exactly once per rerun."""
+    if st.session_state.get(SIDEBAR_FLAG):
+        return
+
     try:
-        from src.auth.auth import is_authenticated, get_current_user, logout_user
-        
-        is_auth = is_authenticated()
-        user = get_current_user() if is_auth else None
-        
-        # Handle navigation actions
-        if 'nav_action' in st.session_state:
-            action = st.session_state.nav_action
-            del st.session_state.nav_action
-            
-            if action == 'login':
-                st.session_state.show_login = True
-                st.rerun()
-            elif action == 'register':
-                st.session_state.show_register = True
-                st.rerun()
-            elif action == 'profile':
-                st.session_state.show_profile = True
-                st.rerun()
-            elif action == 'logout':
-                logout_user()
-                st.success("Logged out successfully!")
-                st.rerun()
-    except Exception:
-        # Auth module not available or error - continue without auth
-        pass
+        from src.ui import sidebar as sidebar_module
+
+        with st.sidebar:
+            sidebar_module.render_sidebar()
+    except Exception as err:
+        st.sidebar.error(f"Sidebar error: {err}")
+    finally:
+        st.session_state[SIDEBAR_FLAG] = True

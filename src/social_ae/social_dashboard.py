@@ -458,7 +458,7 @@ def render_fetch_tab(drug_terms: str, days_back: int, platforms: List[str]):
                     if selected_idx is not None:
                         post = filtered_df.iloc[selected_idx]
                         st.markdown("**Full text:**")
-                        st.text_area("", post.get("text", ""), height=200, disabled=True)
+                        st.text_area("Post content", post.get("text", ""), height=200, disabled=True, label_visibility="collapsed")
                         st.markdown("**Metadata:**")
                         st.json({
                             "Platform": post.get("platform", "N/A"),

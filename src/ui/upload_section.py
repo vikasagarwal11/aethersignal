@@ -28,6 +28,320 @@ def render_upload_section():
     # Initialize in-session schema templates from disk (persistent across runs if filesystem allows)
     if "schema_templates" not in st.session_state:
         st.session_state.schema_templates = mapping_templates.load_templates()
+    
+    # DATASET SELECTOR: Show available datasets from database and let user choose which to load
+    data_loaded = st.session_state.data is not None and st.session_state.normalized_data is not None
+    
+    # Show the database loader section if authenticated (even if data is already loaded - allows combining)
+    if True:  # Always show if authenticated
+        try:
+            from src.auth.auth import is_authenticated, get_current_user
+            from src.pv_storage import load_pv_data, list_available_datasets
+            
+            if is_authenticated():
+                user = get_current_user()
+                if user:
+                    user_id = user.get('user_id')
+                    organization = user.get('organization', '')
+                    
+                    # List available datasets
+                    available_datasets = list_available_datasets(user_id, organization)
+                    
+                    # Show the expander even if no datasets (so user knows the feature exists)
+                    if available_datasets:
+                        # Show dataset selector
+                        expander_title = "💾 Load Data from Database" if not data_loaded else "💾 Load Additional Data from Database (Combine)"
+                        expanded_state = not data_loaded  # Only expand if no data loaded yet
+                        
+                        with st.expander(expander_title, expanded=expanded_state):
+                            if data_loaded:
+                                st.info("ℹ️ **Data already loaded.** Select datasets below to combine with existing data, or upload new files to merge.")
+                                st.markdown(f"**Currently loaded:** {len(st.session_state.normalized_data):,} cases")
+                            else:
+                                st.markdown("**You have data saved in the database. Choose which dataset to load:**")
+                            
+                            # Group datasets by date for display
+                            # Use a list to preserve order and handle potential duplicates
+                            dataset_options_list = []
+                            seen_keys = set()
+                            
+                            for ds in available_datasets:
+                                # Create a unique key to prevent duplicates
+                                unique_key = (ds['upload_date'], ds['source'])
+                                if unique_key not in seen_keys:
+                                    seen_keys.add(unique_key)
+                                    # Create a more descriptive label with time info if available
+                                    time_info = ""
+                                    if ds.get('first_record') and ds.get('last_record'):
+                                        try:
+                                            from datetime import datetime
+                                            # Handle different datetime formats
+                                            first_str = str(ds['first_record'])
+                                            last_str = str(ds['last_record'])
+                                            
+                                            # Try parsing with different formats
+                                            first = None
+                                            last = None
+                                            
+                                            # Try ISO format first
+                                            try:
+                                                first = datetime.fromisoformat(first_str.replace('Z', '+00:00'))
+                                                last = datetime.fromisoformat(last_str.replace('Z', '+00:00'))
+                                            except (ValueError, AttributeError):
+                                                # Fallback to other common formats
+                                                try:
+                                                    from dateutil import parser
+                                                    first = parser.parse(first_str)
+                                                    last = parser.parse(last_str)
+                                                except:
+                                                    pass
+                                            
+                                            if first and last:
+                                                if first.date() == last.date():
+                                                    time_info = f" @ {first.strftime('%H:%M')}"
+                                                else:
+                                                    time_info = f" ({first.strftime('%H:%M')} - {last.strftime('%H:%M')})"
+                                        except Exception:
+                                            # Silently ignore datetime parsing errors
+                                            pass
+                                    
+                                    label = f"{ds['date_label']}{time_info} - {ds['source']} ({ds['case_count']:,} cases)"
+                                    dataset_options_list.append((label, ds))
+                            
+                            # Add "Load All" option at the top
+                            all_data_label = "🔄 Load All Data (All uploads combined)"
+                            dataset_options_list.insert(0, (all_data_label, None))
+                            
+                            # Extract labels and create mapping
+                            dataset_labels = [opt[0] for opt in dataset_options_list]
+                            dataset_options = {opt[0]: opt[1] for opt in dataset_options_list}
+                            
+                            # Allow multi-select for datasets (excluding "Load All" option)
+                            dataset_labels_for_multiselect = [opt[0] for opt in dataset_options_list if opt[1] is not None]
+                            
+                            # Selection mode toggle
+                            selection_mode = st.radio(
+                                "Selection mode:",
+                                ["Single dataset", "Multiple datasets"],
+                                horizontal=True,
+                                key="dataset_selection_mode"
+                            )
+                            
+                            if selection_mode == "Single dataset":
+                                selected_option = st.selectbox(
+                                    "Select dataset to load:",
+                                    options=dataset_labels,
+                                    index=0,
+                                    key="dataset_selector_single"
+                                )
+                                selected_datasets = [selected_option] if selected_option != all_data_label else []
+                            else:
+                                selected_options = st.multiselect(
+                                    "Select datasets to combine (hold Ctrl/Cmd to select multiple):",
+                                    options=dataset_labels_for_multiselect,
+                                    default=[],
+                                    key="dataset_selector_multi"
+                                )
+                                selected_datasets = selected_options
+                                selected_option = None  # Not used in multi-select mode
+                            
+                            # Add combine option if data is already loaded
+                            combine_mode = False
+                            if data_loaded:
+                                combine_mode = st.checkbox(
+                                    "🔗 Combine with existing data (don't replace)",
+                                    value=False,
+                                    key="combine_with_existing"
+                                )
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                if combine_mode:
+                                    button_label = f"✅ Add Selected Dataset to Existing" if selection_mode == "Single dataset" else f"✅ Add {len(selected_datasets)} Datasets to Existing"
+                                else:
+                                    button_label = "✅ Load Selected Dataset" if selection_mode == "Single dataset" else f"✅ Load {len(selected_datasets)} Selected Datasets"
+                                    
+                                if st.button(button_label, use_container_width=True, key="load_dataset", disabled=(selection_mode == "Multiple datasets" and len(selected_datasets) == 0)):
+                                    if selection_mode == "Single dataset":
+                                        # Single dataset loading (existing logic)
+                                        if selected_option == all_data_label or selected_option.startswith("🔄 Load All"):
+                                            # Load all data
+                                            with st.spinner("Loading all data from database..."):
+                                                df_from_db = load_pv_data(user_id, organization)
+                                        else:
+                                            # Load specific dataset
+                                            selected_ds = dataset_options.get(selected_option)
+                                            if selected_ds is None:
+                                                st.error("Invalid dataset selection. Please refresh and try again.")
+                                                st.stop()
+                                            
+                                            from datetime import datetime, timedelta
+                                            
+                                            # Create date range for this dataset
+                                            upload_date = selected_ds['upload_date']
+                                            date_from = datetime.combine(upload_date, datetime.min.time())
+                                            date_to = datetime.combine(upload_date, datetime.max.time())
+                                            
+                                            with st.spinner(f"Loading dataset from {selected_ds['date_label']}..."):
+                                                df_from_db = load_pv_data(
+                                                    user_id, 
+                                                    organization,
+                                                    date_from=date_from,
+                                                    date_to=date_to,
+                                                    source=selected_ds['source']
+                                                )
+                                        
+                                        if df_from_db is not None and not df_from_db.empty:
+                                            if combine_mode and data_loaded:
+                                                # Combine with existing data
+                                                import pandas as pd
+                                                existing_df = st.session_state.normalized_data
+                                                combined_df = pd.concat([existing_df, df_from_db], ignore_index=True)
+                                                
+                                                # Remove duplicates based on case_id if available
+                                                if 'case_id' in combined_df.columns:
+                                                    before_dedup = len(combined_df)
+                                                    combined_df = combined_df.drop_duplicates(subset=['case_id'], keep='first')
+                                                    duplicates_removed = before_dedup - len(combined_df)
+                                                    if duplicates_removed > 0:
+                                                        st.info(f"ℹ️ Removed {duplicates_removed:,} duplicate cases when combining.")
+                                                
+                                                st.session_state.normalized_data = combined_df
+                                                st.session_state.data = combined_df
+                                                st.session_state.data_reloaded_from_db = True
+                                                st.success(f"✅ Combined: {len(existing_df):,} existing + {len(df_from_db):,} new = {len(combined_df):,} total cases")
+                                            else:
+                                                # Replace existing data
+                                                st.session_state.normalized_data = df_from_db
+                                                st.session_state.data = df_from_db
+                                                st.session_state.data_reloaded_from_db = True
+                                                st.session_state.data_loaded_successfully = True
+                                                st.success(f"✅ Loaded {len(df_from_db):,} cases")
+                                            st.rerun()
+                                    else:
+                                        # Multi-dataset loading
+                                        if len(selected_datasets) == 0:
+                                            st.warning("Please select at least one dataset to load.")
+                                            st.stop()
+                                        
+                                        from datetime import datetime
+                                        import pandas as pd
+                                        
+                                        all_dfs = []
+                                        total_cases = 0
+                                        
+                                        with st.spinner(f"Loading {len(selected_datasets)} dataset(s)..."):
+                                            progress_bar = st.progress(0)
+                                            for i, selected_label in enumerate(selected_datasets):
+                                                selected_ds = dataset_options.get(selected_label)
+                                                if selected_ds is None:
+                                                    continue
+                                                
+                                                # Create date range for this dataset
+                                                upload_date = selected_ds['upload_date']
+                                                date_from = datetime.combine(upload_date, datetime.min.time())
+                                                date_to = datetime.combine(upload_date, datetime.max.time())
+                                                
+                                                # Load this dataset
+                                                df = load_pv_data(
+                                                    user_id, 
+                                                    organization,
+                                                    date_from=date_from,
+                                                    date_to=date_to,
+                                                    source=selected_ds['source']
+                                                )
+                                                
+                                                if df is not None and not df.empty:
+                                                    all_dfs.append(df)
+                                                    total_cases += len(df)
+                                                
+                                                progress_bar.progress((i + 1) / len(selected_datasets))
+                                        
+                                        if all_dfs:
+                                            # Combine all datasets
+                                            df_from_db = pd.concat(all_dfs, ignore_index=True)
+                                            
+                                            # Remove duplicates based on case_id if available
+                                            if 'case_id' in df_from_db.columns:
+                                                before_dedup = len(df_from_db)
+                                                df_from_db = df_from_db.drop_duplicates(subset=['case_id'], keep='first')
+                                                duplicates_removed = before_dedup - len(df_from_db)
+                                                if duplicates_removed > 0:
+                                                    st.info(f"ℹ️ Removed {duplicates_removed:,} duplicate cases when combining datasets.")
+                                            
+                                            if combine_mode and data_loaded:
+                                                # Combine with existing data
+                                                existing_df = st.session_state.normalized_data
+                                                combined_df = pd.concat([existing_df, df_from_db], ignore_index=True)
+                                                
+                                                # Remove duplicates again
+                                                if 'case_id' in combined_df.columns:
+                                                    before_dedup = len(combined_df)
+                                                    combined_df = combined_df.drop_duplicates(subset=['case_id'], keep='first')
+                                                    duplicates_removed = before_dedup - len(combined_df)
+                                                    if duplicates_removed > 0:
+                                                        st.info(f"ℹ️ Removed {duplicates_removed:,} duplicate cases when combining with existing data.")
+                                                
+                                                st.session_state.normalized_data = combined_df
+                                                st.session_state.data = combined_df
+                                                st.session_state.data_reloaded_from_db = True
+                                                st.success(f"✅ Combined: {len(existing_df):,} existing + {len(df_from_db):,} new = {len(combined_df):,} total cases")
+                                            else:
+                                                # Replace existing data
+                                                st.session_state.normalized_data = df_from_db
+                                                st.session_state.data = df_from_db
+                                                st.session_state.data_reloaded_from_db = True
+                                                st.session_state.data_loaded_successfully = True
+                                                st.success(f"✅ Loaded and combined {len(selected_datasets)} dataset(s): {len(df_from_db):,} total cases")
+                                            st.rerun()
+                                        else:
+                                            st.error("Failed to load any datasets. Please try again.")
+                                    
+                            with col2:
+                                if st.button("🔄 Refresh Dataset List", use_container_width=True, key="refresh_datasets"):
+                                    st.rerun()
+                            
+                            # Show dataset summary
+                            st.markdown("---")
+                            st.markdown("**Available Datasets:**")
+                            
+                            # Remove duplicates from display (same logic as dropdown)
+                            seen_display = set()
+                            unique_datasets = []
+                            for ds in available_datasets:
+                                unique_key = (ds['upload_date'], ds['source'])
+                                if unique_key not in seen_display:
+                                    seen_display.add(unique_key)
+                                    unique_datasets.append(ds)
+                            
+                            for ds in unique_datasets[:5]:  # Show first 5
+                                st.caption(f"📅 **{ds['date_label']}** - {ds['source']}: {ds['case_count']:,} cases")
+                            if len(unique_datasets) > 5:
+                                st.caption(f"... and {len(unique_datasets) - 5} more")
+                            
+                            # Show total count if multiple datasets
+                            if len(unique_datasets) > 1:
+                                total_cases = sum(ds['case_count'] for ds in unique_datasets)
+                                st.info(f"📊 **Total across all datasets:** {total_cases:,} cases")
+                    else:
+                        # No datasets found - show empty state
+                        with st.expander("💾 Load Data from Database", expanded=False):
+                            st.info("📭 No datasets found in database. Upload data first to save it for future sessions.")
+                else:
+                    # User object is None - authentication issue
+                    with st.expander("💾 Load Data from Database", expanded=False):
+                        st.warning("⚠️ Unable to retrieve user profile. Please try logging in again.")
+            else:
+                # Not authenticated - this is normal, user can still upload files
+                pass
+        except Exception as e:
+            # Show error for debugging, but don't break the upload functionality
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error loading datasets from database: {e}", exc_info=True)
+            # Optionally show a non-intrusive error message
+            # st.error(f"⚠️ Could not load datasets from database: {str(e)[:100]}")
+            pass
 
     st.markdown(
         """
@@ -454,10 +768,20 @@ def render_upload_section():
     # Show "Load & map data" button only if files are uploaded but not yet loaded
     # Also check if we've already processed these files (prevents reprocessing on rerun)
     loading_in_progress = st.session_state.get("loading_in_progress", False)
-    show_load_button = uploaded_files and not data_loaded and not loading_in_progress
+    show_load_button = uploaded_files and not loading_in_progress  # Allow even if data is already loaded (for combining)
     
     if show_load_button:
-        load_clicked = st.button("🔄 Load & map data", disabled=not uploaded_files)
+        # Add combine option if data is already loaded
+        combine_with_existing = False
+        if data_loaded:
+            combine_with_existing = st.checkbox(
+                f"🔗 Combine with existing data ({len(st.session_state.normalized_data):,} cases) - don't replace",
+                value=False,
+                key="combine_upload_with_existing"
+            )
+        
+        button_label = "🔄 Load & map data" if not combine_with_existing else f"🔄 Add to existing data ({len(st.session_state.normalized_data):,} cases)"
+        load_clicked = st.button(button_label, disabled=not uploaded_files)
     elif data_loaded:
         # Data is already loaded - show prominent status instead of button
         # Check database storage status
@@ -465,30 +789,33 @@ def render_upload_section():
         from src.auth.auth import is_authenticated
         
         # Build status message HTML
-        status_html = """
-        <div style='padding: 1rem; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 2px solid #22c55e; border-radius: 8px; margin: 0.75rem 0;'>
-            <div style='font-size: 1.1rem; font-weight: 700; color: #15803d; margin-bottom: 0.5rem;'>✅ Data Already Loaded</div>
-            <div style='font-size: 0.95rem; color: #16a34a; margin-bottom: 0.75rem;'>
-                Your data is ready! Scroll down to <strong>Step 2: Query Your Data</strong> to start exploring.
-            </div>
-        """
+        status_html = """<div style='padding: 1rem; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 2px solid #22c55e; border-radius: 8px; margin: 0.75rem 0;'>
+<div style='font-size: 1.1rem; font-weight: 700; color: #15803d; margin-bottom: 0.5rem;'>✅ Data Already Loaded</div>
+<div style='font-size: 0.95rem; color: #16a34a; margin-bottom: 0.75rem;'>
+Your data is ready! Scroll down to <strong>Step 2: Query Your Data</strong> to start exploring.
+</div>"""
         
         # Add database storage status if available
         if db_status:
             if db_status.get("success"):
                 inserted = db_status.get('inserted', 0)
+                duplicates = db_status.get('duplicates', 0)
                 total = db_status.get('total', 0)
-                status_html += f"""
-            <div style='padding: 0.75rem; background: #f0fdf4; border-left: 4px solid #22c55e; border-radius: 6px; margin-top: 0.5rem;'>
-                <div style='font-size: 0.9rem; font-weight: 600; color: #15803d; margin-bottom: 0.25rem;'>💾 Database Storage</div>
-                <div style='font-size: 0.85rem; color: #16a34a;'>
-                    ✅ <strong>{inserted:,}</strong> cases saved to database (out of {total:,} total)
-                </div>
-                <div style='font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;'>
-                    Your data will persist across sessions and can be accessed from any device.
-                </div>
-            </div>
-        """
+                
+                duplicate_info = ""
+                if duplicates > 0:
+                    duplicate_info = f"<div style='font-size: 0.85rem; color: #f59e0b; margin-top: 0.25rem;'>⚠️ <strong>{duplicates:,}</strong> duplicate(s) skipped (already in database)</div>"
+                
+                status_html += f"""<div style='padding: 0.75rem; background: #f0fdf4; border-left: 4px solid #22c55e; border-radius: 6px; margin-top: 0.5rem;'>
+<div style='font-size: 0.9rem; font-weight: 600; color: #15803d; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+<div style='font-size: 0.85rem; color: #16a34a;'>
+✅ <strong>{inserted:,}</strong> new case(s) saved to database (out of {total:,} total)
+</div>
+{duplicate_info}
+<div style='font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;'>
+Your data will persist across sessions and can be accessed from any device.
+</div>
+</div>"""
             else:
                 # Failed storage
                 inserted = db_status.get('inserted', 0)
@@ -498,54 +825,47 @@ def render_upload_section():
                 
                 # Check if 0 cases were saved (critical error)
                 if inserted == 0 and total > 0:
-                    status_html += f"""
-            <div style='padding: 0.75rem; background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 6px; margin-top: 0.5rem;'>
-                <div style='font-size: 0.9rem; font-weight: 600; color: #dc2626; margin-bottom: 0.25rem;'>💾 Database Storage - CRITICAL ERROR</div>
-                <div style='font-size: 0.85rem; color: #dc2626; margin-bottom: 0.5rem;'>
-                    ❌ <strong>0 cases saved</strong> out of {total:,} total
-                </div>
-                <div style='font-size: 0.85rem; color: #991b1b; margin-bottom: 0.5rem; padding: 0.5rem; background: #fee2e2; border-radius: 4px;'>
-                    <strong>Error:</strong> {error_msg[:300]}{'...' if len(error_msg) > 300 else ''}
-                </div>
-                {"<div style='font-size: 0.8rem; color: #7f1d1d; margin-top: 0.5rem;'><strong>Possible causes:</strong><ul style='margin: 0.25rem 0; padding-left: 1.5rem;'><li>RLS (Row-Level Security) policy blocking inserts</li><li>Invalid user_id or user not authenticated properly</li><li>Database connection issue</li><li>Missing SUPABASE_SERVICE_KEY in environment</li></ul></div>" if error_details else ""}
-                <div style='font-size: 0.8rem; color: #64748b; margin-top: 0.5rem;'>
-                    ⚠️ Data is loaded in session memory only. It will be lost if you refresh the page.
-                </div>
-            </div>
-        """
+                    error_causes_html = "<div style='font-size: 0.8rem; color: #7f1d1d; margin-top: 0.5rem;'><strong>Possible causes:</strong><ul style='margin: 0.25rem 0; padding-left: 1.5rem;'><li>RLS (Row-Level Security) policy blocking inserts</li><li>Invalid user_id or user not authenticated properly</li><li>Database connection issue</li><li>Missing SUPABASE_SERVICE_KEY in environment</li></ul></div>" if error_details else ""
+                    status_html += f"""<div style='padding: 0.75rem; background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 6px; margin-top: 0.5rem;'>
+<div style='font-size: 0.9rem; font-weight: 600; color: #dc2626; margin-bottom: 0.25rem;'>💾 Database Storage - CRITICAL ERROR</div>
+<div style='font-size: 0.85rem; color: #dc2626; margin-bottom: 0.5rem;'>
+❌ <strong>0 cases saved</strong> out of {total:,} total
+</div>
+<div style='font-size: 0.85rem; color: #991b1b; margin-bottom: 0.5rem; padding: 0.5rem; background: #fee2e2; border-radius: 4px;'>
+<strong>Error:</strong> {error_msg[:300]}{'...' if len(error_msg) > 300 else ''}
+</div>
+{error_causes_html}
+<div style='font-size: 0.8rem; color: #64748b; margin-top: 0.5rem;'>
+⚠️ Data is loaded in session memory only. It will be lost if you refresh the page.
+</div>
+</div>"""
                 else:
                     # Other error (partial failure or different issue)
-                    status_html += f"""
-            <div style='padding: 0.75rem; background: #fefce8; border-left: 4px solid #eab308; border-radius: 6px; margin-top: 0.5rem;'>
-                <div style='font-size: 0.9rem; font-weight: 600; color: #a16207; margin-bottom: 0.25rem;'>💾 Database Storage</div>
-                <div style='font-size: 0.85rem; color: #ca8a04;'>
-                    ⚠️ {error_msg}
-                </div>
-                <div style='font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;'>
-                    Data is loaded in session memory only. It will be lost if you refresh the page.
-                </div>
-            </div>
-        """
+                    status_html += f"""<div style='padding: 0.75rem; background: #fefce8; border-left: 4px solid #eab308; border-radius: 6px; margin-top: 0.5rem;'>
+<div style='font-size: 0.9rem; font-weight: 600; color: #a16207; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+<div style='font-size: 0.85rem; color: #ca8a04;'>
+⚠️ {error_msg}
+</div>
+<div style='font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;'>
+Data is loaded in session memory only. It will be lost if you refresh the page.
+</div>
+</div>"""
         elif is_authenticated():
             # Authenticated but no storage status yet - offer to save
-            status_html += """
-            <div style='padding: 0.75rem; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 6px; margin-top: 0.5rem;'>
-                <div style='font-size: 0.9rem; font-weight: 600; color: #1e40af; margin-bottom: 0.25rem;'>💾 Database Storage</div>
-                <div style='font-size: 0.85rem; color: #2563eb;'>
-                    ℹ️ Database storage status unavailable. Data may need to be re-uploaded to save to database.
-                </div>
-            </div>
-        """
+            status_html += """<div style='padding: 0.75rem; background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 6px; margin-top: 0.5rem;'>
+<div style='font-size: 0.9rem; font-weight: 600; color: #1e40af; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+<div style='font-size: 0.85rem; color: #2563eb;'>
+ℹ️ Database storage status unavailable. Data may need to be re-uploaded to save to database.
+</div>
+</div>"""
         else:
             # Not authenticated
-            status_html += """
-            <div style='padding: 0.75rem; background: #f8fafc; border-left: 4px solid #94a3b8; border-radius: 6px; margin-top: 0.5rem;'>
-                <div style='font-size: 0.9rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;'>💾 Database Storage</div>
-                <div style='font-size: 0.85rem; color: #64748b;'>
-                    ℹ️ Data is loaded in session memory only. <a href="/Login" style="color: #3b82f6; text-decoration: underline;">Login</a> to save data to database for persistence.
-                </div>
-            </div>
-        """
+            status_html += """<div style='padding: 0.75rem; background: #f8fafc; border-left: 4px solid #94a3b8; border-radius: 6px; margin-top: 0.5rem;'>
+<div style='font-size: 0.9rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem;'>💾 Database Storage</div>
+<div style='font-size: 0.85rem; color: #64748b;'>
+ℹ️ Data is loaded in session memory only. <a href="/Login" style="color: #3b82f6; text-decoration: underline;">Login</a> to save data to database for persistence.
+</div>
+</div>"""
         
         status_html += "</div>"
         st.markdown(status_html, unsafe_allow_html=True)
@@ -558,6 +878,47 @@ def render_upload_section():
         load_clicked = False
 
     if load_clicked and uploaded_files:
+        # Check for duplicate files (NEW - Phase 1: File Upload History)
+        try:
+            from src.auth.auth import is_authenticated, get_current_user
+            from src.file_upload_history import check_duplicate_file
+            
+            if is_authenticated():
+                user = get_current_user()
+                if user:
+                    user_id = user.get('user_id')
+                    organization = user.get('organization', '')
+                    
+                    # Check each uploaded file for duplicates
+                    duplicate_warnings = []
+                    for file in uploaded_files:
+                        duplicate = check_duplicate_file(
+                            user_id, organization, file.name, file.size
+                        )
+                        if duplicate:
+                            upload_date = duplicate.get('uploaded_at', '')
+                            case_count = duplicate.get('total_cases', 0) or 0
+                            duplicate_warnings.append({
+                                'filename': file.name,
+                                'size_mb': file.size / (1024 * 1024),
+                                'uploaded_at': upload_date,
+                                'cases': case_count
+                            })
+                    
+                    # Show duplicate warnings if any
+                    if duplicate_warnings:
+                        st.warning("⚠️ **Potential Duplicate Files Detected:**")
+                        for dup in duplicate_warnings:
+                            upload_date_str = dup['uploaded_at'][:10] if dup['uploaded_at'] and len(dup['uploaded_at']) >= 10 else 'unknown date'
+                            st.info(
+                                f"📄 **{dup['filename']}** ({dup['size_mb']:.1f} MB) - "
+                                f"Previously uploaded on {upload_date_str} "
+                                f"with {dup['cases']:,} cases. "
+                                "This file will be processed anyway, but you can skip it if it's a duplicate."
+                            )
+        except Exception:
+            pass  # Don't break upload if duplicate check fails
+        
         # Calculate total size for progress tracking
         total_size_bytes = sum(f.size for f in uploaded_files)
         total_size_mb = total_size_bytes / (1024 * 1024)
@@ -1053,8 +1414,27 @@ def render_upload_section():
                         "Some analysis features may be limited."
                     )
                 
-                st.session_state.normalized_data = normalized
-                st.session_state.data = normalized  # Also set data for compatibility
+                # Check if we should combine with existing data
+                if combine_with_existing and data_loaded:
+                    # Combine with existing data
+                    existing_df = st.session_state.normalized_data
+                    combined_df = pd.concat([existing_df, normalized], ignore_index=True)
+                    
+                    # Remove duplicates based on case_id if available
+                    if 'case_id' in combined_df.columns:
+                        before_dedup = len(combined_df)
+                        combined_df = combined_df.drop_duplicates(subset=['case_id'], keep='first')
+                        duplicates_removed = before_dedup - len(combined_df)
+                        if duplicates_removed > 0:
+                            st.info(f"ℹ️ Removed {duplicates_removed:,} duplicate cases when combining with existing data.")
+                    
+                    st.session_state.normalized_data = combined_df
+                    st.session_state.data = combined_df
+                    st.success(f"✅ Combined: {len(existing_df):,} existing + {len(normalized):,} new = {len(combined_df):,} total cases")
+                else:
+                    # Replace existing data
+                    st.session_state.normalized_data = normalized
+                    st.session_state.data = normalized  # Also set data for compatibility
                 
                 # Store data in database if user is authenticated
                 try:
@@ -1068,20 +1448,76 @@ def render_upload_section():
                             organization = user.get('organization', '')
                             source = 'FAERS'  # Default, can be enhanced to detect source from file
                             
+                            # Option 3: User Review - Choose duplicate handling mode
+                            st.markdown("---")
+                            st.markdown("### 💾 Database Storage Options")
+                            
+                            duplicate_handling = st.radio(
+                                "How would you like to handle duplicates?",
+                                [
+                                    "Auto-skip duplicates (recommended)",
+                                    "Save all (including duplicates)"
+                                ],
+                                index=0,
+                                key="duplicate_handling_mode",
+                                help="Auto-skip: Only save new unique cases. Save all: Save all records including duplicates (useful for audit/compliance)."
+                            )
+                            
+                            skip_duplicate_check = (duplicate_handling == "Save all (including duplicates)")
+                            
+                            if skip_duplicate_check:
+                                st.warning("⚠️ **Option 3: Save All** - All records (including duplicates) will be saved to database. You can review and merge duplicates later.")
+                            
                             with st.spinner("💾 Storing data in database..."):
-                                result = store_pv_data(normalized, user_id, organization, source)
+                                result = store_pv_data(normalized, user_id, organization, source, skip_duplicate_check=skip_duplicate_check)
                                 inserted = result.get('inserted', 0)
                                 total = result.get('total', len(normalized))
                                 
+                                duplicates = result.get("duplicates", 0)
+                                
                                 if result.get("success") and inserted > 0:
                                     # Store database storage status in session state for display after rerun
+                                    if skip_duplicate_check:
+                                        # Option 3: Save All - all records saved including duplicates
+                                        message = f"✅ Data stored in database! {inserted:,} case(s) saved (including duplicates)."
+                                        st.session_state.db_storage_status = {
+                                            "success": True,
+                                            "inserted": inserted,
+                                            "duplicates": 0,  # Not skipped, all saved
+                                            "total": total,
+                                            "message": message,
+                                            "mode": "save_all"
+                                        }
+                                        st.success(f"✅ Data stored in database! {inserted:,} case(s) saved (including duplicates). You can review and merge duplicates later using the Duplicate Detection panel.")
+                                    else:
+                                        # Auto-skip mode - duplicates were skipped
+                                        message = f"✅ Data stored in database! {inserted:,} new case(s) saved."
+                                        if duplicates > 0:
+                                            message += f" {duplicates:,} duplicate(s) skipped."
+                                        
+                                        st.session_state.db_storage_status = {
+                                            "success": True,
+                                            "inserted": inserted,
+                                            "duplicates": duplicates,
+                                            "total": total,
+                                            "message": message,
+                                            "mode": "auto_skip"
+                                        }
+                                        
+                                        if duplicates > 0:
+                                            st.success(f"✅ Data stored in database! {inserted:,} new case(s) saved. ⚠️ {duplicates:,} duplicate(s) skipped (already in database).")
+                                        else:
+                                            st.success(f"✅ Data stored in database! {inserted:,} cases saved.")
+                                elif inserted == 0 and duplicates > 0:
+                                    # All records were duplicates
+                                    st.info(f"ℹ️ All {duplicates:,} case(s) already exist in database. No new records inserted.")
                                     st.session_state.db_storage_status = {
                                         "success": True,
-                                        "inserted": inserted,
+                                        "inserted": 0,
+                                        "duplicates": duplicates,
                                         "total": total,
-                                        "message": f"✅ Data stored in database! {inserted:,} cases saved."
+                                        "message": f"ℹ️ All {duplicates:,} case(s) already exist in database."
                                     }
-                                    st.success(f"✅ Data stored in database! {inserted:,} cases saved.")
                                 elif inserted == 0 and total > 0:
                                     # Critical: 0 cases saved but we tried to save many
                                     error_msg = result.get("error", "Unknown error - no cases were inserted")

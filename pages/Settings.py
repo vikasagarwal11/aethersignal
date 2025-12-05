@@ -1,15 +1,48 @@
 """
 Settings Page - Global settings and configuration
+Super admin only - requires authentication and super_admin role
 """
 
 import streamlit as st
+from src.ui.top_nav import render_top_nav
+from src.auth.admin_helpers import require_super_admin
 from src.settings.settings_page import render_settings_page
 
 st.set_page_config(
     page_title="AetherSignal — Settings",
     page_icon="⚙️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
+# Apply theme
+from src.styles import apply_theme
+apply_theme()
+
+# Global top navigation - MUST BE FIRST st.* CALL AFTER apply_theme()
+render_top_nav()
+
+# Check authentication first
+from src.auth.auth import is_authenticated
+if not is_authenticated():
+    st.warning("⚠️ Please login to access global settings.")
+    if st.button("Go to Login"):
+        st.switch_page("pages/Login.py")
+    st.stop()
+
+# Enforce super_admin role (with error handling)
+try:
+    require_super_admin()
+except PermissionError:
+    st.error("🔒 Access Denied: This page is only available to platform super administrators.")
+    st.info("Please contact your system administrator if you need access to global settings.")
+    st.stop()
+
+# Page content
+st.title("⚙️ Global Platform Settings")
+st.caption("Configure platform-wide behavior, feature toggles, and data source settings. Only platform super administrators can access this page.")
+
+# Delegate to existing settings UI
 render_settings_page()
 

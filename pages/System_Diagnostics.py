@@ -1,15 +1,48 @@
 """
 System Diagnostics Page - System health and diagnostics
+Protected: super_admin only
 """
 
 import streamlit as st
+from src.ui.top_nav import render_top_nav
+from src.auth.admin_helpers import require_super_admin
+from src.auth.auth import is_authenticated
 from src.system.diagnostics import render_diagnostics_dashboard
 
 st.set_page_config(
     page_title="AetherSignal — System Diagnostics",
-    page_icon="🔍",
-    layout="wide"
+    page_icon="🧪",
+    layout="wide",
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
+# Apply theme
+from src.styles import apply_theme
+apply_theme()
+
+# Global top navigation - MUST BE FIRST st.* CALL AFTER apply_theme()
+render_top_nav()
+
+# Check authentication first
+if not is_authenticated():
+    st.warning("⚠️ Please login to access system diagnostics.")
+    if st.button("Go to Login"):
+        st.switch_page("pages/Login.py")
+    st.stop()
+
+# Enforce super_admin role (with error handling)
+try:
+    require_super_admin()
+except PermissionError:
+    st.error("🔒 Access Denied: This page is only available to platform super administrators.")
+    st.info("Please contact your system administrator if you need access to system diagnostics.")
+    st.stop()
+
+# Page content
+st.title("🧪 System Diagnostics")
+st.caption("Monitor system health, performance, and diagnostics. Only platform super administrators can access this page.")
+
+# Delegate to existing diagnostics UI
 render_diagnostics_dashboard()
 

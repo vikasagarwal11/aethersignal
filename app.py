@@ -36,12 +36,8 @@ except Exception:
 
 import streamlit as st
 
-# Restore authentication session first, before anything else
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
@@ -54,8 +50,9 @@ from src.auth.auth import is_authenticated
 st.set_page_config(
     page_title="AetherSignal – Landing Page",
     page_icon="🔬",
-    layout="centered",
+    layout="wide",  # Changed from "centered" for consistent full-width layout
     initial_sidebar_state="expanded",  # Show sidebar for navigation
+    menu_items=None,
 )
 
 
@@ -65,10 +62,25 @@ st.set_page_config(
 apply_theme()
 
 
+# TOP NAVIGATION - MUST BE FIRST st.* CALL AFTER apply_theme()
 # -------------------------------------------------------------------
-# TOP NAVIGATION
-# -------------------------------------------------------------------
-render_top_nav()
+try:
+    render_top_nav()
+except Exception as e:
+    # Show error for debugging
+    import traceback
+    st.error(f"Top nav error: {e}")
+    st.code(traceback.format_exc())
+    # Try to render a minimal fallback nav
+    try:
+        st.markdown("""
+        <div style="position: fixed; top: 60px; left: 0; right: 0; height: 50px; background: #1e293b; z-index: 999; padding: 0 2rem; display: flex; align-items: center; gap: 1rem;">
+            <a href="/" style="color: white; text-decoration: none; font-weight: bold;">⚛️ AetherSignal</a>
+        </div>
+        <div style="height: 50px;"></div>
+        """, unsafe_allow_html=True)
+    except:
+        pass
 
 # Handle login/register/profile page routing
 if st.session_state.get("show_login"):

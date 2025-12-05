@@ -1,95 +1,110 @@
-# Files Involved in Navigation & Sidebar Setup
+# Navigation System Files - Complete List
 
-This document lists all files that affect the top navigation bar and sidebar behavior in AetherSignal.
+This document lists all files related to the navigation system in AetherSignal that need to be reviewed for the duplicate button key issue.
 
-## Core Navigation Files
+## 🔴 Core Navigation Files (Critical)
 
-### 1. `src/ui/top_nav.py`
-- **Purpose**: Renders the fixed top navigation bar
-- **Key Features**:
-  - Fixed dark blue navigation bar at top
-  - Navigation links: Home, Quantum PV, Social AE
-  - Active page highlighting via JavaScript
-  - Hides Streamlit's default header
-- **Issues**: Navigation clicks not working properly, buttons positioning
+### 1. Top Navigation
+- **`src/ui/top_nav.py`** ⚠️ **PRIMARY ISSUE HERE**
+  - Line 272: Button key uses `f"top_nav_sub_{sub_page}"` which becomes `None` when sub_page is None
+  - Contains `_render_subpage_button()` function with the problematic key generation
 
-### 2. `app.py`
-- **Purpose**: Landing page (Home)
-- **Key Features**:
-  - Calls `render_top_nav()` at line 32
-  - Sets `initial_sidebar_state="expanded"`
-  - Landing page content with CTA buttons
+### 2. Sidebar Navigation
+- **`src/ui/sidebar.py`**
+  - Handles sidebar navigation and routing
+  - Uses route-based keys (should be safe)
 
-### 3. `pages/1_Quantum_PV_Explorer.py`
-- **Purpose**: Quantum PV Explorer page
-- **Key Features**:
-  - Calls `render_top_nav()` at line 41
-  - Sets `initial_sidebar_state="expanded"` (sidebar always visible)
-  - Main application functionality
+### 3. Route Configuration
+- **`src/ui/layout/routes.py`** ⚠️ **ROUTE DEFINITIONS HERE**
+  - Defines all routes and subpages
+  - Many subpages have `"page": None` which causes the duplicate key issue
+  - Lines 38-78: Safety Intelligence subpages (some have page: None)
+  - This is where subpages are configured
 
-### 4. `pages/2_Social_AE_Explorer.py`
-- **Purpose**: Social AE Explorer page
-- **Key Features**:
-  - Calls `render_top_nav()` at line 41
-  - Sets `initial_sidebar_state="expanded"` (changed from "collapsed")
-  - Sidebar toggle should be visible but currently missing
+### 4. Navigation Handler
+- **`src/ui/nav_handler.py`**
+  - Handles navigation actions and routing logic
 
-## Styling Files
+## 🟡 Main Application Files (Entry Points)
 
-### 5. `src/styles.py`
-- **Purpose**: Centralized CSS styling
-- **Key Features**:
-  - Line 24-27: Padding for fixed nav bar
-  - Line 30-48: Hides Streamlit Deploy button
-  - Line 622-636: Sidebar styling
-  - Line 43-48: Sidebar toggle visibility rules (recently added)
+### 5. Main App Entry
+- **`app.py`**
+  - Line 67: Calls `render_top_nav()` where error occurs
+  - Main entry point for Streamlit app
 
-## Supporting Files
+### 6. Quantum PV Explorer Page
+- **`pages/1_Quantum_PV_Explorer.py`**
+  - Main Signal module page
+  - Uses sidebar and top navigation
 
-### 6. `src/ui/header.py`
-- **Purpose**: Page headers/hero sections
-- **Key Features**:
-  - `render_header(page_type="quantum"|"social")` - Different headers per page
-  - `render_banner()` - Disclaimer banner
-  - Not directly related to navigation, but affects page layout
+### 7. Social AE Explorer Page
+- **`pages/2_Social_AE_Explorer.py`**
+  - Social AE module page
 
-## Current Issues
+## 🟢 Supporting Navigation Components
 
-1. **Top Navigation Not Working**:
-   - Buttons in `src/ui/top_nav.py` use `onclick="window.location.href='...'"`
-   - Streamlit's routing may not work with direct JavaScript navigation
-   - Need to use `st.switch_page()` or proper Streamlit routing
+### 8. Layout Components
+- **`src/ui/layout/base_layout.py`**
+- **`src/ui/layout/sidebar.py`** (different from main sidebar.py)
+- **`src/ui/layout/topnav.py`** (may be legacy/unused)
 
-2. **Sidebar Toggle Missing**:
-   - Sidebar toggle button disappears on Social AE page
-   - CSS in `src/styles.py` may be hiding it
-   - `initial_sidebar_state="expanded"` should keep toggle visible
+### 9. Navigation Components
+- **`src/ui/components/navigation.py`**
+- **`src/ui/intelligence/navigation.py`**
 
-3. **Button Positioning**:
-   - Navigation buttons appearing below the nav bar instead of inside it
-   - CSS positioning issues in `src/ui/top_nav.py`
+### 10. Other UI Components
+- **`src/ui/workspace_status_bar.py`**
+- **`src/ui/status_bar_v2.py`**
 
-## Recommended Fixes
+## 📋 Route Configuration Details
 
-1. **Navigation**: Use Streamlit's native `st.switch_page()` with buttons instead of HTML onclick
-2. **Sidebar**: Ensure CSS doesn't hide the toggle button, check Streamlit's sidebar toggle selector
-3. **Positioning**: Use proper CSS flexbox/grid or absolute positioning for nav buttons
-
-## File Dependencies
-
-```
-app.py
-  └─> src/ui/top_nav.py
-  └─> src/styles.py (via apply_theme())
-
-pages/1_⚛️_Quantum_PV_Explorer.py
-  └─> src/ui/top_nav.py
-  └─> src/styles.py (via apply_theme())
-  └─> src/ui/header.py
-
-pages/2_🌐_Social_AE_Explorer.py
-  └─> src/ui/top_nav.py
-  └─> src/styles.py (via apply_theme())
-  └─> src/ui/header.py
+The issue occurs in `src/ui/layout/routes.py` where subpages are defined. Example:
+```python
+"subpages": {
+    "Knowledge Graph": {
+        "route": "knowledge_graph",
+        "icon": "🕸️",
+        "page": None,  # ← This causes the duplicate key!
+        "coming_soon": True,
+        ...
+    },
+}
 ```
 
+When multiple subpages have `"page": None`, they all get the key `top_nav_sub_None`, causing duplicates.
+
+## 🔧 Fix Required
+
+In `src/ui/top_nav.py` line 272, change from:
+```python
+key=f"top_nav_sub_{sub_page}"  # Becomes "top_nav_sub_None" for multiple items
+```
+
+To something unique like:
+```python
+key=f"top_nav_sub_{route_name}_{subpage_name}"  # Use route + subpage name for uniqueness
+```
+
+Or use the route from subpage_config:
+```python
+key=f"top_nav_sub_{subpage_config.get('route', subpage_name)}"
+```
+
+## 📝 Files to Share for Review
+
+### Essential Files (Must Review):
+1. `src/ui/top_nav.py` - The file with the bug
+2. `src/ui/layout/routes.py` - Route definitions
+3. `src/ui/sidebar.py` - Sidebar implementation
+4. `app.py` - Entry point
+
+### Supporting Files (For Context):
+5. `pages/1_Quantum_PV_Explorer.py` - Main page
+6. `src/ui/nav_handler.py` - Navigation logic
+7. `src/ui/components/navigation.py` - Additional nav components
+
+## 🎯 Summary
+
+The root cause is in `src/ui/top_nav.py` where button keys are generated using `sub_page` which can be `None`. When multiple subpages have `page: None`, they all get the same key, causing Streamlit's duplicate key error.
+
+The fix should use a unique identifier like the subpage name or route instead of the page value.

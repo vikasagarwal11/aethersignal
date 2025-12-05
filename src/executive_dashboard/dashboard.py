@@ -32,13 +32,8 @@ def render_executive_dashboard():
     """
     Render the complete Executive Drug Safety Dashboard.
     Main entry point for executive-level safety intelligence.
+    Note: st.set_page_config() must be called in the page file, not here.
     """
-    st.set_page_config(
-        page_title="Executive Drug Safety Dashboard",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
     st.title("🌍 Executive Drug Safety Dashboard")
     st.caption("High-level multi-source safety intelligence for VPs, Directors, and Regulatory Leaders")
     

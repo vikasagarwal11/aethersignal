@@ -4,51 +4,165 @@ Provides audit logging and viewer functionality for compliance (21 CFR Part 11-f
 """
 
 import json
+import importlib.util
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import streamlit as st
 import pandas as pd
 
-from src import analytics
+# Import analytics module (not package) - handle both module and package cases
+try:
+    # Try importing as module first (analytics.py)
+    analytics_path = Path(__file__).parent.parent / "analytics.py"
+    if analytics_path.exists():
+        spec = importlib.util.spec_from_file_location("analytics_module", analytics_path)
+        analytics_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(analytics_module)
+        ANALYTICS_STORAGE_AVAILABLE = getattr(analytics_module, 'ANALYTICS_STORAGE_AVAILABLE', False)
+        ANALYTICS_DIR = getattr(analytics_module, 'ANALYTICS_DIR', None)
+        init_session_id = getattr(analytics_module, 'init_session_id', lambda: "anonymous")
+    else:
+        # Fallback: try package import
+        from src import analytics as analytics_module
+        ANALYTICS_STORAGE_AVAILABLE = getattr(analytics_module, 'ANALYTICS_STORAGE_AVAILABLE', False)
+        ANALYTICS_DIR = getattr(analytics_module, 'ANALYTICS_DIR', None)
+        init_session_id = getattr(analytics_module, 'init_session_id', lambda: "anonymous")
+except (ImportError, AttributeError, Exception):
+    ANALYTICS_STORAGE_AVAILABLE = False
+    ANALYTICS_DIR = None
+    init_session_id = lambda: "anonymous"
 
-
-AUDIT_LOG_FILE = analytics.ANALYTICS_DIR / "audit_log.jsonl" if analytics.ANALYTICS_STORAGE_AVAILABLE else None
+AUDIT_LOG_FILE = ANALYTICS_DIR / "audit_log.jsonl" if (ANALYTICS_STORAGE_AVAILABLE and ANALYTICS_DIR) else None
 
 
 def log_audit_event(
     event: str,
     details: Optional[Dict] = None,
     user_id: Optional[str] = None,
+    organization: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
 ) -> None:
     """
-    Log an audit event to the immutable audit log.
+    Log an audit event to database (activity_logs table) and file (backup).
     
     Args:
         event: Event type (e.g., 'query_executed', 'pdf_generated', 'data_loaded', 'settings_changed')
         details: Optional event details dictionary
-        user_id: Optional user identifier (session ID if not provided)
+        user_id: Optional user identifier (UUID from auth, or session ID if not authenticated)
+        organization: Optional organization identifier
+        ip_address: Optional IP address for audit trail
+        user_agent: Optional user agent string
     """
-    if not analytics.ANALYTICS_STORAGE_AVAILABLE or AUDIT_LOG_FILE is None:
-        return
-    
     try:
+        # Try to get user_id and organization from session state if not provided
         if user_id is None:
-            user_id = analytics.init_session_id()
+            # Try to get from auth first
+            try:
+                from src.auth.auth import get_current_user
+                user = get_current_user()
+                if user and user.get("id"):
+                    user_id = user["id"]
+                else:
+                    user_id = init_session_id()  # Fallback to session ID
+            except Exception:
+                user_id = init_session_id()
         
-        audit_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "event": event,
-            "user_id": user_id,
-            "details": details or {},
-        }
+        if organization is None:
+            try:
+                from src.auth.auth import get_current_user
+                user = get_current_user()
+                if user and user.get("profile"):
+                    profile = user.get("profile", {})
+                    organization = profile.get("organization") if isinstance(profile, dict) else None
+            except Exception:
+                organization = st.session_state.get("user_organization")
         
-        # Append to JSONL file (immutable log)
-        with open(AUDIT_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(audit_entry) + "\n")
+        # Prepare event details JSONB
+        event_details = details or {}
+        if isinstance(event_details, dict):
+            # Ensure JSON-serializable
+            event_details_clean = _clean_for_json(event_details)
+        else:
+            event_details_clean = {}
+        
+        # Write to database (primary storage)
+        try:
+            from src.pv_storage import get_supabase_db
+            sb = get_supabase_db(use_service_key=True)  # Use service key to bypass RLS for inserts
+            
+            if sb:
+                # Prepare record for database
+                record = {
+                    "event_type": event,
+                    "event_details": event_details_clean,
+                    "created_at": datetime.now().isoformat(),
+                }
+                
+                # Add user_id if available (UUID format expected)
+                if user_id:
+                    # Check if it's a UUID format (from auth) or session ID
+                    try:
+                        import uuid
+                        # Try to parse as UUID - if it fails, it's a session ID
+                        uuid.UUID(str(user_id))
+                        record["user_id"] = str(user_id)
+                    except (ValueError, AttributeError):
+                        # Session ID - store in event_details instead
+                        event_details_clean["session_id"] = user_id
+                        record["event_details"] = event_details_clean
+                
+                # Add organization if available
+                if organization:
+                    record["organization"] = organization
+                
+                # Add IP address and user agent if available
+                if ip_address:
+                    record["ip_address"] = ip_address
+                if user_agent:
+                    record["user_agent"] = user_agent
+                
+                # Insert into database
+                sb.table("activity_logs").insert(record).execute()
+        except Exception as db_error:
+            # Log database error but continue to file logging
+            pass
+        
+        # Also write to file as backup (existing behavior)
+        if ANALYTICS_STORAGE_AVAILABLE and AUDIT_LOG_FILE is not None:
+            audit_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "event": event,
+                "user_id": str(user_id) if user_id else "anonymous",
+                "details": details or {},
+            }
+            
+            # Append to JSONL file (immutable log backup)
+            with open(AUDIT_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(audit_entry) + "\n")
     except Exception:
         # Silently fail - audit should never break the app
         pass
+
+
+def _clean_for_json(obj: Any) -> Any:
+    """Recursively clean dict/list to remove NaN and Inf values for JSON compliance."""
+    import math
+    import pandas as pd
+    
+    if isinstance(obj, dict):
+        return {k: _clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_for_json(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 
 def read_audit_log(
@@ -69,7 +183,7 @@ def read_audit_log(
     Returns:
         List of audit log entries
     """
-    if not analytics.ANALYTICS_STORAGE_AVAILABLE or AUDIT_LOG_FILE is None:
+    if not ANALYTICS_STORAGE_AVAILABLE or AUDIT_LOG_FILE is None:
         return []
     
     if not AUDIT_LOG_FILE.exists():

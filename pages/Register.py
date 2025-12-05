@@ -8,12 +8,8 @@ load_dotenv()
 
 import streamlit as st
 
-# Restore authentication session first, before anything else
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
@@ -22,30 +18,15 @@ from src.ui.auth.register import render_register_page
 st.set_page_config(
     page_title="AetherSignal – Register",
     page_icon="📝",
-    layout="centered",
-    initial_sidebar_state="collapsed",
+    layout="wide",  # Changed from "centered" for consistent full-width layout
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
 apply_theme()
-render_top_nav()
-
-# Handle nav actions from top nav
-nav_action = st.session_state.get("nav_action")
-if nav_action == "login":
-    st.switch_page("pages/Login.py")
-elif nav_action == "register":
-    pass  # Already on register page
-elif nav_action == "profile":
-    st.switch_page("pages/Profile.py")
-elif nav_action == "logout":
-    try:
-        from src.auth.auth import logout_user
-        logout_user()
-        st.rerun()
-    except Exception:
-        pass
-if "nav_action" in st.session_state:
-    st.session_state.nav_action = None
+render_top_nav()  # MUST BE FIRST st.* CALL AFTER apply_theme()
+# PHASE 1.2: Navigation action handling is now centralized in nav_handler.py
+# No need for nav_action handling here - it's called from render_top_nav()
 
 # Check if already authenticated - redirect to dashboard
 from src.auth.auth import is_authenticated

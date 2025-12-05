@@ -8,12 +8,8 @@ load_dotenv()
 
 import streamlit as st
 
-# Restore authentication session first, before anything else
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
@@ -23,30 +19,15 @@ from src.auth.auth import is_authenticated
 st.set_page_config(
     page_title="AetherSignal – Profile",
     page_icon="👤",
-    layout="centered",
-    initial_sidebar_state="expanded",
+    layout="wide",  # Changed from "centered" for consistent full-width layout
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
 apply_theme()
-render_top_nav()
-
-# Handle nav actions from top nav
-nav_action = st.session_state.get("nav_action")
-if nav_action == "login":
-    st.switch_page("pages/Login.py")
-elif nav_action == "register":
-    st.switch_page("pages/Register.py")
-elif nav_action == "profile":
-    pass  # Already on profile page
-elif nav_action == "logout":
-    try:
-        from src.auth.auth import logout_user
-        logout_user()
-        st.rerun()
-    except Exception:
-        pass
-if "nav_action" in st.session_state:
-    st.session_state.nav_action = None
+render_top_nav()  # MUST BE FIRST st.* CALL AFTER apply_theme()
+# PHASE 1.2: Navigation action handling is now centralized in nav_handler.py
+# No need for nav_action handling here - it's called from render_top_nav()
 
 # Add spacing for top nav
 st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True)

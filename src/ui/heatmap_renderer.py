@@ -4,7 +4,7 @@ Polished enterprise-grade heatmap visualization with color-coding.
 """
 import streamlit as st
 import pandas as pd
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 
 def _apply_enterprise_colors(value: Any) -> tuple:

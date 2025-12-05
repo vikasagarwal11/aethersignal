@@ -5,12 +5,8 @@ First-time user setup and license activation
 
 import streamlit as st
 
-# Restore authentication session
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
@@ -20,14 +16,15 @@ from src.security.license_manager import LicenseManager
 st.set_page_config(
     page_title="AetherSignal — Welcome",
     page_icon="🚀",
-    layout="centered",
-    initial_sidebar_state="collapsed",
+    layout="wide",  # Changed from "centered" for consistent full-width layout
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
 # Apply theme
 apply_theme()
 
-# Top navigation
+# Top navigation - MUST BE FIRST st.* CALL AFTER apply_theme()
 render_top_nav()
 
 # Onboarding wizard

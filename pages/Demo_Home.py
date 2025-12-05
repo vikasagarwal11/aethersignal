@@ -5,12 +5,8 @@ Wave 4: Public Demo Portal
 
 import streamlit as st
 
-# Restore authentication session
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.ui.top_nav import render_top_nav
@@ -22,18 +18,19 @@ st.set_page_config(
     page_title="AetherSignal — Demo Mode",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded",  # Enables collapse/expand arrow
+    menu_items=None,                    # Removes three-dot menu
 )
 
 # Apply theme
 apply_theme()
 
-# Ensure demo mode is enabled
+# Top navigation - MUST BE FIRST st.* CALL AFTER apply_theme()
+render_top_nav()
+
+# Ensure demo mode is enabled (moved after nav render)
 if not is_demo_mode():
     set_demo_mode(True)
-
-# Top navigation
-render_top_nav()
 
 # Load demo data into session state
 if "demo_data_loaded" not in st.session_state:

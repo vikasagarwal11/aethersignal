@@ -9,40 +9,18 @@ load_dotenv()
 
 import streamlit as st
 
-# Restore authentication session first, before anything else
-try:
-    from src.auth.auth import restore_session
-    restore_session()
-except Exception:
-    pass
+# PHASE 1.1: Session restoration is now centralized in initialize_session()
+# No need to call restore_session() here - it's called in initialize_session()
 
 from src.styles import apply_theme
 from src.app_helpers import initialize_session
 from src.ui.top_nav import render_top_nav
-from src.ui import header, upload_section, query_interface, sidebar
+from src.ui import header, upload_section, query_interface
 from src.ui.results_display import display_query_results
 
-# -------------------------------------------------------------------
-# Sidebar actions listener helpers
-# -------------------------------------------------------------------
-def _handle_nav_actions():
-    nav_action = st.session_state.get("nav_action")
-    if nav_action == "login":
-        st.switch_page("pages/Login.py")
-    elif nav_action == "register":
-        st.switch_page("pages/Register.py")
-    elif nav_action == "profile":
-        st.switch_page("pages/Profile.py")
-    elif nav_action == "logout":
-        try:
-            from src.auth.auth import logout_user
-            logout_user()
-        except Exception:
-            pass
-        st.session_state.nav_action = None
-        st.rerun()
-    if "nav_action" in st.session_state:
-        st.session_state.nav_action = None
+# PHASE 1.2: Navigation action handling is now centralized in nav_handler.py
+# No need for _handle_nav_actions() here - it's called from render_top_nav()
+
 from src.auth.auth import is_authenticated
 
 
@@ -54,6 +32,7 @@ st.set_page_config(
     page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items=None,
 )
 
 
@@ -64,15 +43,15 @@ apply_theme()
 
 
 # -------------------------------------------------------------------
+# TOP NAVIGATION - MUST BE FIRST st.* CALL AFTER apply_theme()
+# -------------------------------------------------------------------
+render_top_nav()
+
+
+# -------------------------------------------------------------------
 # Initialize session state
 # -------------------------------------------------------------------
 initialize_session()
-
-
-# -------------------------------------------------------------------
-# TOP NAVIGATION
-# -------------------------------------------------------------------
-render_top_nav()
 
 # Check authentication
 if not is_authenticated():
@@ -80,41 +59,15 @@ if not is_authenticated():
     st.warning("⚠️ Please login to access the Quantum PV Explorer.")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔐 Login", use_container_width=True):
+        if st.button("🔐 Login", use_container_width=True, key="main_page_login"):
             st.switch_page("pages/Login.py")
     with col2:
-        if st.button("📝 Register", use_container_width=True):
+        if st.button("📝 Register", use_container_width=True, key="main_page_register"):
             st.switch_page("pages/Register.py")
     st.stop()
 
 # Prevent flicker on page load
 st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-
-
-# -------------------------------------------------------------------
-# SIDEBAR – Must render early to set workspace state
-# -------------------------------------------------------------------
-with st.sidebar:
-    sidebar.render_sidebar()
-    # Listen for nav actions from top nav (login/register/profile/logout)
-    nav_action = st.session_state.get("nav_action")
-    if nav_action == "login":
-        st.switch_page("pages/Login.py")
-    elif nav_action == "register":
-        st.switch_page("pages/Register.py")
-    elif nav_action == "profile":
-        st.switch_page("pages/Profile.py")
-    elif nav_action == "logout":
-        try:
-            from src.auth.auth import logout_user
-            logout_user()
-        except Exception:
-            pass
-        st.session_state.nav_action = None
-        st.rerun()
-    # Clear action
-    if "nav_action" in st.session_state:
-        st.session_state.nav_action = None
 
 
 # -------------------------------------------------------------------

@@ -85,7 +85,7 @@ def get_supabase_db(use_service_key: bool = True) -> Optional[Client]:
         return None
 
 
-def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str = "FAERS") -> Dict[str, Any]:
+def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str = "FAERS", skip_duplicate_check: bool = False) -> Dict[str, Any]:
     """
     Store PV data in database with user/company association.
     
@@ -94,6 +94,7 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
         user_id: User UUID
         organization: Company/organization name
         source: Data source (FAERS, E2B, Argus, etc.)
+        skip_duplicate_check: If True, save all records including duplicates (Option 3: Save All)
         
     Returns:
         Dictionary with success status and statistics
@@ -118,14 +119,59 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
         }
     
     try:
-        # Prepare data for insertion
+        # STEP 1: Check for duplicates (skip if Option 3: Save All is enabled)
+        existing_case_ids = set()
+        duplicates_skipped = 0
+        
+        if not skip_duplicate_check:
+            # Extract case_ids from the DataFrame we're about to insert
+            case_ids_to_check = set()
+            
+            for _, row in df.iterrows():
+                case_id = str(row.get("case_id", row.get("caseid", row.get("primaryid", ""))))
+                if case_id:  # Only check non-empty case_ids
+                    case_ids_to_check.add(case_id)
+            
+            # Check which case_ids already exist in database
+            if case_ids_to_check:
+                try:
+                    # Check existing case_ids in batches (Supabase query limit)
+                    check_batch_size = 1000
+                    case_ids_list = list(case_ids_to_check)
+                    
+                    for i in range(0, len(case_ids_list), check_batch_size):
+                        batch_case_ids = case_ids_list[i:i + check_batch_size]
+                        
+                        # Query for existing case_ids matching this batch
+                        existing_query = sb.table("pv_cases").select("case_id").eq("user_id", user_id).eq("organization", organization).in_("case_id", batch_case_ids)
+                        
+                        existing_response = existing_query.execute()
+                        
+                        if existing_response.data:
+                            batch_existing = {str(rec.get("case_id", "")) for rec in existing_response.data if rec.get("case_id")}
+                            existing_case_ids.update(batch_existing)
+                except Exception as e:
+                    # If query fails, proceed without duplicate check (safer to insert than to fail entirely)
+                    # Log error but continue
+                    pass
+        
+        # STEP 2: Prepare records for insertion
         records = []
+        
         for _, row in df.iterrows():
+            case_id = str(row.get("case_id", row.get("caseid", row.get("primaryid", ""))))
+            
+            # Skip duplicates only if duplicate check is enabled
+            if not skip_duplicate_check:
+                if case_id and case_id in existing_case_ids:
+                    duplicates_skipped += 1
+                    continue
+            
             record = {
                 "user_id": user_id,
                 "organization": organization,
                 "source": source,
-                "case_id": str(row.get("case_id", row.get("caseid", row.get("primaryid", "")))),
+                "case_id": case_id,
                 "primaryid": str(row.get("primaryid", "")),
                 "isr": str(row.get("isr", "")),
                 "drug_name": str(row.get("drug_name", "")),
@@ -148,7 +194,17 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
             }
             records.append(record)
         
-        # Insert in batches (Supabase has limits)
+        # If all records are duplicates, return early
+        if not records:
+            return {
+                "success": True,
+                "inserted": 0,
+                "duplicates": duplicates_skipped,
+                "total": len(df),
+                "message": f"All {duplicates_skipped:,} cases already exist in database. No new records inserted."
+            }
+        
+        # STEP 3: Insert only new records in batches
         batch_size = 1000
         total_inserted = 0
         errors = 0
@@ -193,12 +249,23 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
         
         # Partial or full success
         success = errors == 0
+        message_parts = []
+        if total_inserted > 0:
+            message_parts.append(f"Stored {total_inserted:,} new case(s)")
+        if duplicates_skipped > 0:
+            message_parts.append(f"skipped {duplicates_skipped:,} duplicate(s)")
+        if errors > 0:
+            message_parts.append(f"{errors:,} failed")
+        
+        message = ". ".join(message_parts) + "."
+        
         return {
             "success": success,
             "inserted": total_inserted,
+            "duplicates": duplicates_skipped,
             "errors": errors,
-            "total": len(records),
-            "message": f"Stored {total_inserted:,} cases in database." + (f" ({errors:,} failed)" if errors > 0 else ""),
+            "total": len(df),
+            "message": message,
             "error_details": error_details[:5] if error_details and errors > 0 else []
         }
         
@@ -209,14 +276,24 @@ def store_pv_data(df: pd.DataFrame, user_id: str, organization: str, source: str
         }
 
 
-def load_pv_data(user_id: str, organization: Optional[str] = None, limit: Optional[int] = None) -> Optional[pd.DataFrame]:
+def load_pv_data(
+    user_id: str, 
+    organization: Optional[str] = None, 
+    limit: Optional[int] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    source: Optional[str] = None
+) -> Optional[pd.DataFrame]:
     """
     Load PV data from database for a specific user/company.
     
     Args:
         user_id: User UUID
         organization: Optional organization filter
-        limit: Optional limit on number of records
+        limit: Optional limit on number of records (if None, loads all records with pagination)
+        date_from: Optional filter by upload date (from)
+        date_to: Optional filter by upload date (to)
+        source: Optional filter by data source (FAERS, E2B, etc.)
         
     Returns:
         DataFrame with PV data or None
@@ -229,6 +306,7 @@ def load_pv_data(user_id: str, organization: Optional[str] = None, limit: Option
         return None
     
     try:
+        # Build base query
         query = sb.table("pv_cases").select("*")
         
         # Filter by user_id (RLS should handle this, but we add it explicitly)
@@ -237,21 +315,82 @@ def load_pv_data(user_id: str, organization: Optional[str] = None, limit: Option
         if organization:
             query = query.eq("organization", organization)
         
+        # Filter by upload date range (created_at)
+        if date_from:
+            query = query.gte("created_at", date_from.isoformat())
+        if date_to:
+            query = query.lte("created_at", date_to.isoformat())
+        
+        # Filter by source
+        if source:
+            query = query.eq("source", source)
+        
+        # If limit is specified, use it directly
         if limit:
             query = query.limit(limit)
-        
-        response = query.execute()
-        
-        if response.data:
-            df = pd.DataFrame(response.data)
-            # Remove internal fields that aren't part of original schema
-            columns_to_drop = ['id', 'user_id', 'organization', 'created_at', 'updated_at', 'raw_data']
-            for col in columns_to_drop:
-                if col in df.columns:
-                    df = df.drop(columns=[col])
-            return df
+            response = query.execute()
+            
+            if response.data:
+                df = pd.DataFrame(response.data)
+                # Remove internal fields that aren't part of original schema
+                columns_to_drop = ['id', 'user_id', 'organization', 'created_at', 'updated_at', 'raw_data']
+                for col in columns_to_drop:
+                    if col in df.columns:
+                        df = df.drop(columns=[col])
+                return df
+            else:
+                return pd.DataFrame()
         else:
-            return pd.DataFrame()
+            # No limit specified - use pagination to load ALL records
+            # Supabase default limit is 1000, so we need to paginate
+            all_data = []
+            page_size = 1000
+            offset = 0
+            
+            while True:
+                # Build a fresh query for each page to avoid parameter accumulation
+                page_query = sb.table("pv_cases").select("*")
+                page_query = page_query.eq("user_id", user_id)
+                
+                if organization:
+                    page_query = page_query.eq("organization", organization)
+                
+                # Filter by upload date range (created_at)
+                if date_from:
+                    page_query = page_query.gte("created_at", date_from.isoformat())
+                if date_to:
+                    page_query = page_query.lte("created_at", date_to.isoformat())
+                
+                # Filter by source
+                if source:
+                    page_query = page_query.eq("source", source)
+                
+                # Apply range for this page
+                page_query = page_query.range(offset, offset + page_size - 1)
+                
+                response = page_query.execute()
+                
+                if not response.data or len(response.data) == 0:
+                    break
+                
+                all_data.extend(response.data)
+                
+                # If we got fewer records than page_size, we've reached the end
+                if len(response.data) < page_size:
+                    break
+                
+                offset += page_size
+            
+            if all_data:
+                df = pd.DataFrame(all_data)
+                # Remove internal fields that aren't part of original schema
+                columns_to_drop = ['id', 'user_id', 'organization', 'created_at', 'updated_at', 'raw_data']
+                for col in columns_to_drop:
+                    if col in df.columns:
+                        df = df.drop(columns=[col])
+                return df
+            else:
+                return pd.DataFrame()
             
     except Exception as e:
         st.error(f"Failed to load data: {str(e)}")
@@ -309,6 +448,143 @@ def get_user_data_stats(user_id: str, organization: Optional[str] = None) -> Dic
         return {
             "error": str(e)
         }
+
+
+def list_available_datasets(user_id: str, organization: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    List available datasets grouped by upload date/source.
+    Helps users identify which datasets they have uploaded.
+    
+    Args:
+        user_id: User UUID
+        organization: Optional organization filter
+        
+    Returns:
+        List of dictionaries with dataset info (date, source, count, etc.)
+    """
+    if not SUPABASE_AVAILABLE:
+        return []
+    
+    sb = get_supabase_db()
+    if not sb:
+        return []
+    
+    try:
+        # Get all records with created_at to group by upload date
+        # Use pagination to get ALL records (not just first 1000)
+        query = sb.table("pv_cases").select("created_at, source")
+        query = query.eq("user_id", user_id)
+        
+        if organization:
+            query = query.eq("organization", organization)
+        
+        # Order by created_at descending (newest first)
+        query = query.order("created_at", desc=True)
+        
+        # OPTIMIZED: Sample records to identify datasets (don't need all records)
+        # Strategy: Get records from different time periods to identify all unique date/source combinations
+        # Maximum 10,000 records should be enough to identify all datasets
+        
+        all_data = []
+        page_size = 1000
+        max_records_to_sample = 10000  # Enough to identify all unique date/source combinations
+        offset = 0
+        
+        while len(all_data) < max_records_to_sample:
+            # Build a fresh query for each page to avoid parameter accumulation
+            page_query = sb.table("pv_cases").select("created_at, source")
+            page_query = page_query.eq("user_id", user_id)
+            
+            if organization:
+                page_query = page_query.eq("organization", organization)
+            
+            # Order by created_at descending (newest first)
+            page_query = page_query.order("created_at", desc=True)
+            
+            # Apply range for this page
+            page_query = page_query.range(offset, offset + page_size - 1)
+            
+            response = page_query.execute()
+            
+            if not response.data or len(response.data) == 0:
+                break
+            
+            all_data.extend(response.data)
+            
+            # If we got fewer records than page_size, we've reached the end
+            if len(response.data) < page_size:
+                break
+            
+            offset += page_size
+        
+        # Also get count for each dataset using aggregation (if possible)
+        # Fallback: Use sampled data which should have all unique combinations
+        
+        if not all_data:
+            return []
+        
+        df = pd.DataFrame(all_data)
+        
+        # Convert created_at to datetime
+        df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
+        df = df.dropna(subset=['created_at'])
+        
+        if df.empty:
+            return []
+        
+        # Group by date (day) and source
+        df['upload_date'] = df['created_at'].dt.date
+        df['upload_datetime'] = df['created_at']
+        
+        # Get unique combinations of date and source from sampled data
+        grouped = df.groupby(['upload_date', 'source']).agg({
+            'created_at': ['count', 'min', 'max']
+        }).reset_index()
+        
+        grouped.columns = ['upload_date', 'source', 'sampled_count', 'first_record', 'last_record']
+        
+        # Get accurate counts for each dataset using count queries
+        datasets = []
+        for _, row in grouped.iterrows():
+            upload_date = row['upload_date']
+            source = row['source']
+            
+            # Get accurate count for this dataset
+            from datetime import datetime
+            date_from = datetime.combine(upload_date, datetime.min.time())
+            date_to = datetime.combine(upload_date, datetime.max.time())
+            
+            count_query = sb.table("pv_cases").select("id", count="exact")
+            count_query = count_query.eq("user_id", user_id)
+            if organization:
+                count_query = count_query.eq("organization", organization)
+            count_query = count_query.gte("created_at", date_from.isoformat())
+            count_query = count_query.lte("created_at", date_to.isoformat())
+            count_query = count_query.eq("source", source)
+            
+            try:
+                count_response = count_query.execute()
+                case_count = count_response.count if hasattr(count_response, 'count') else row['sampled_count']
+            except Exception:
+                # Fallback to sampled count if count query fails
+                case_count = row['sampled_count']
+            
+            datasets.append({
+                'upload_date': upload_date,
+                'source': source,
+                'case_count': int(case_count),
+                'first_record': row['first_record'].isoformat() if pd.notna(row['first_record']) else None,
+                'last_record': row['last_record'].isoformat() if pd.notna(row['last_record']) else None,
+                'date_label': upload_date.strftime('%Y-%m-%d') if pd.notna(upload_date) else 'Unknown'
+            })
+        
+        # Sort by date descending (newest first)
+        datasets.sort(key=lambda x: x['upload_date'], reverse=True)
+        
+        return datasets
+        
+    except Exception as e:
+        return []
 
 
 def delete_user_data(user_id: str, organization: Optional[str] = None) -> Dict[str, Any]:

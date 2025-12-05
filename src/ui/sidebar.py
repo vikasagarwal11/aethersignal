@@ -1,15 +1,19 @@
-"""
+﻿"""
 Sidebar component for AetherSignal.
 V2: Adds navigation + processing mode while keeping all existing controls.
 
 CORRECTED VERSION - Includes missing "Usage Statistics" section.
 """
 
-from typing import Dict
+from typing import Dict, List
+
 import streamlit as st
 
 from src import analytics
 from src import nl_query_parser
+from src.ui.layout.routes import get_admin_routes, get_primary_routes, page_exists
+
+SIDEBAR_FLAG = "_aether_sidebar_drawn"
 
 
 def _set_if_not_exists(key: str, value):
@@ -20,6 +24,10 @@ def _set_if_not_exists(key: str, value):
 
 def render_sidebar():
     """Render sidebar with navigation, filters, and controls."""
+    if st.session_state.get(SIDEBAR_FLAG):
+        return
+    st.session_state[SIDEBAR_FLAG] = True
+
     # ------------------------------------------------------------------
     # 0. Initialize shared session keys (safe, idempotent)
     # ------------------------------------------------------------------
@@ -27,10 +35,133 @@ def render_sidebar():
     _set_if_not_exists("processing_mode", "auto")       # auto | server | local
     _set_if_not_exists("debug_mode", False)
 
-    st.markdown("### ⚙️ Controls")
+    # ------------------------------------------------------------------
+    # PHASE 2.3: Navigation Section (from route map)
+    # ------------------------------------------------------------------
+    try:
+        from src.auth.auth import is_authenticated
+        from src.auth.admin_helpers import is_admin, is_super_admin
+
+        is_authed = is_authenticated()
+        user_roles = []
+        if is_authed:
+            try:
+                if is_super_admin():
+                    user_roles.append("super_admin")
+                if is_admin():
+                    user_roles.append("admin")
+            except Exception:
+                pass
+
+        filtered_routes = get_primary_routes(
+            require_auth=None if is_authed else False,
+            user_roles=user_roles if user_roles else None,
+        )
+        admin_routes = get_admin_routes(user_roles=user_roles if user_roles else None)
+
+        st.markdown("### Navigation")
+
+        for route_name, route_config in filtered_routes.items():
+            nav_location = route_config.get("nav_location", "both")
+            if nav_location not in {"sidebar", "both"}:
+                continue
+            if not route_config.get("visible_in_nav", True):
+                continue
+
+            icon = route_config.get("icon", "•")
+            route_label = f"{icon} {route_name}"
+            subpages = route_config.get("subpages", {})
+
+            if subpages:
+                default_expanded = route_name == "Data Explorer"
+                with st.expander(route_label, expanded=default_expanded):
+                    for subpage_name, subpage_config in subpages.items():
+                        if not subpage_config.get("visible_in_nav", True):
+                            continue
+
+                        subpage_page = subpage_config.get("page")
+                        sub_icon = subpage_config.get("icon", "•")
+                        sub_label = f"{sub_icon} {subpage_name}"
+                        sub_roles = subpage_config.get("roles", [])
+                        sub_allowed = (
+                            (not subpage_config.get("requires_auth", True) or is_authed)
+                            and (not sub_roles or (user_roles and any(role in user_roles for role in sub_roles)))
+                            and page_exists(subpage_page)
+                        )
+                        coming_soon = subpage_config.get("coming_soon", False) or not page_exists(subpage_page)
+
+                        if coming_soon:
+                            st.button(
+                                f"{sub_label} - coming soon",
+                                key=f"sidebar_{subpage_config.get('route')}_soon",
+                                use_container_width=True,
+                                disabled=True,
+                            )
+                            continue
+
+                        if st.button(
+                            sub_label,
+                            key=f"sidebar_{subpage_config.get('route')}",
+                            use_container_width=True,
+                            disabled=not sub_allowed,
+                        ):
+                            st.switch_page(f"pages/{subpage_page}.py")
+            else:
+                page = route_config.get("page")
+                route_roles = route_config.get("roles", [])
+                route_allowed = (
+                    (not route_config.get("requires_auth", True) or is_authed)
+                    and (not route_roles or (user_roles and any(role in user_roles for role in route_roles)))
+                )
+
+                if not page_exists(page):
+                    st.button(
+                        f"{route_label} - coming soon",
+                        key=f"sidebar_{route_config.get('route')}_soon",
+                        use_container_width=True,
+                        disabled=True,
+                    )
+                    continue
+
+                if st.button(
+                    route_label,
+                    key=f"sidebar_{route_config.get('route')}",
+                    use_container_width=True,
+                    disabled=not route_allowed,
+                ):
+                    st.switch_page(f"pages/{page}.py")
+
+        if is_authed and admin_routes:
+            st.markdown("---")
+            st.markdown("### Admin")
+            for admin_name, admin_config in admin_routes.items():
+                admin_page = admin_config.get("page")
+                if not page_exists(admin_page):
+                    continue
+                admin_icon = admin_config.get("icon", "🛠️")
+                if st.button(
+                    f"{admin_icon} {admin_name}",
+                    key=f"sidebar_{admin_config.get('route')}",
+                    use_container_width=True,
+                ):
+                    st.switch_page(f"pages/{admin_page}.py")
+
+        st.markdown("---")
+    except Exception as e:
+        st.markdown("### Navigation")
+        st.error(f"Navigation error: {e}")
+        import traceback
+
+        st.code(traceback.format_exc())
+        st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 1. Authentication / Session
+    # Filters & Controls Section (existing functionality preserved)
+    # ------------------------------------------------------------------
+    st.markdown("### Controls")
+
+    # ------------------------------------------------------------------
+    # 1. User Info (if authenticated) - Profile/Login moved to top nav
     # ------------------------------------------------------------------
     try:
         from src.auth.auth import is_authenticated, get_current_user
@@ -41,18 +172,13 @@ def render_sidebar():
         is_authed = st.session_state.get("authenticated", False)
         user = None
 
-    if not is_authed:
-        if st.button("🔐 Login", key="sidebar_login", use_container_width=True):
-            st.switch_page("pages/Login.py")
-        if st.button("📝 Register", key="sidebar_register", use_container_width=True):
-            st.switch_page("pages/Register.py")
-    else:
-        # Show signed-in user info
+    if is_authed and user:
+        # Show signed-in user info (optional - profile is in top nav now)
         user_email = user.get("email", "") if user else st.session_state.get("user_email", "Unknown")
-        st.caption(f"Signed in as {user_email}")
-        # Keep single button for simplicity (can add Settings later)
-        if st.button("👤 Profile", key="sidebar_profile", use_container_width=True):
-            st.switch_page("pages/Profile.py")
+        st.caption(f"👤 {user_email}")
+        st.caption("💡 Profile & settings in the top-right menu")
+
+    # Note: Login/Register/Profile buttons removed - now in top nav profile dropdown
 
     # ------------------------------------------------------------------
     # 2. Session reset (unchanged functionality, slightly tidied)
@@ -65,7 +191,7 @@ def render_sidebar():
     reset_confirmed = st.session_state.get("reset_session_confirmed", False)
 
     if not reset_confirmed:
-        if st.button("🗑️ Clear Filters & Results", key="reset_session_sidebar", use_container_width=True):
+        if st.button("🧹 Clear Filters & Results", key="reset_session_sidebar", use_container_width=True):
             st.session_state.reset_session_confirmed = True
             st.rerun()
     else:
@@ -77,8 +203,10 @@ def render_sidebar():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ Confirm Clear", key="confirm_reset", use_container_width=True, type="primary"):
-                # Preserve authentication state
-                auth_keys_to_preserve = [
+                # PHASE 1: Expanded session reset preserve list
+                # Preserves auth, navigation, workspace, engine, and UX state
+                preserve_keys = [
+                    # Authentication
                     "user_id",
                     "user_email",
                     "user_session",
@@ -86,10 +214,32 @@ def render_sidebar():
                     "user_profile",
                     "user_organization",
                     "user_role",
+                    # Navigation & Workspace
+                    "active_workspace",
+                    "processing_mode",
+                    "processing_mode_reason",
+                    "processing_mode_override",
+                    "sidebar_mode",
+                    "current_page",
+                    # UX & Theme
+                    "theme_mode",
+                    "debug_mode",
+                    "quantum_enabled",
+                    "include_social_ae",
+                    # Engine & Heavy Objects
+                    "hybrid_master_engine",
+                    "browser_capabilities",
+                    # Transient Navigation
+                    "nav_action",
+                    "show_login",
+                    "show_register",
+                    "show_profile",
+                    # Memory & Conversation
+                    "memory_state",
                 ]
 
                 preserved_state = {}
-                for key in auth_keys_to_preserve:
+                for key in preserve_keys:
                     if key in st.session_state:
                         preserved_state[key] = st.session_state[key]
 
@@ -97,7 +247,7 @@ def render_sidebar():
                 for k in list(st.session_state.keys()):
                     del st.session_state[k]
 
-                # Restore auth state
+                # Restore preserved state
                 for key, value in preserved_state.items():
                     st.session_state[key] = value
 
@@ -132,9 +282,9 @@ def render_sidebar():
     st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 3. 🧭 Workspace Navigation (NEW in Sidebar V2)
+    # 3. Workspace Navigation (NEW in Sidebar V2)
     # ------------------------------------------------------------------
-    st.markdown("### 🧭 Workspace")
+    st.markdown("### Workspace")
 
     workspace_label_map = {
         "explorer": "Signal Explorer",
@@ -145,7 +295,7 @@ def render_sidebar():
         "processing": "Processing & Offline Mode",
     }
 
-    # Map current key → human label
+    # Map current key -> human label
     current_workspace = st.session_state.get("active_workspace", "explorer")
     current_label = workspace_label_map.get(current_workspace, "Signal Explorer")
 
@@ -157,7 +307,7 @@ def render_sidebar():
         key="workspace_radio",
     )
 
-    # Reverse map label → key
+    # Reverse map label -> key
     inverse_map = {v: k for k, v in workspace_label_map.items()}
     chosen_workspace_key = inverse_map.get(workspace_choice, "explorer")
     st.session_state.active_workspace = chosen_workspace_key
@@ -176,9 +326,9 @@ def render_sidebar():
     st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 4. 🧮 Processing Mode (ties into Hybrid Engine / 7.x roadmap)
+    # 4. Processing Mode (ties into Hybrid Engine / 7.x roadmap)
     # ------------------------------------------------------------------
-    st.markdown("### 🧬 Processing Mode")
+    st.markdown("### Processing Mode")
 
     mode_label_map = {
         "auto": "Auto (recommended)",
@@ -210,12 +360,15 @@ def render_sidebar():
     st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 4.5. 📊 Analytics Tools (NEW - Missing panels integration)
+    # 4.5. Analytics Tools (NEW - Missing panels integration)
     # ------------------------------------------------------------------
-    data_loaded = st.session_state.data is not None and st.session_state.normalized_data is not None
+    data_loaded = (
+        st.session_state.get("data") is not None and 
+        st.session_state.get("normalized_data") is not None
+    )
     
     if data_loaded:
-        st.markdown("### 📊 Analytics Tools")
+        st.markdown("### Analytics Tools")
         st.caption("Advanced analytics and visualization panels")
         
         analytics_col1, analytics_col2 = st.columns(2)
@@ -226,7 +379,7 @@ def render_sidebar():
                 st.session_state.active_tab = "local_trends"
                 st.rerun()
             
-            if st.button("⚛️ Case Clustering", key="sidebar_case_clustering", use_container_width=True):
+            if st.button("📊 Case Clustering", key="sidebar_case_clustering", use_container_width=True):
                 st.session_state.show_clustering = True
                 st.session_state.active_tab = "case_clustering"
                 st.rerun()
@@ -260,15 +413,18 @@ def render_sidebar():
         st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 5. 🔍 Advanced search (your existing filters – kept as-is)
+    # 5. Advanced search (existing filters)
     # ------------------------------------------------------------------
     st.markdown(
-        "### 🔍 Advanced search <span class='beta-badge'>BETA</span>",
+        "### Advanced search <span class='beta-badge'>BETA</span>",
         unsafe_allow_html=True,
     )
     st.caption("Use structured filters for precise slicing. Applies to the next results view.")
 
-    data_loaded = st.session_state.data is not None and st.session_state.normalized_data is not None
+    data_loaded = (
+        st.session_state.get("data") is not None and 
+        st.session_state.get("normalized_data") is not None
+    )
     loading_in_progress = st.session_state.get("loading_in_progress", False)
 
     if data_loaded:
@@ -310,8 +466,8 @@ def render_sidebar():
                 with c2:
                     date_to = st.date_input("To date", key="sidebar_date_to", value=None)
 
-        apply_adv = st.button("Apply advanced filters", use_container_width=True)
-        clear_adv = st.button("Clear filters", use_container_width=True)
+        apply_adv = st.button("Apply advanced filters", use_container_width=True, key="sidebar_apply_filters")
+        clear_adv = st.button("Clear filters", use_container_width=True, key="sidebar_clear_filters")
 
         if apply_adv:
             filters: Dict = {}
@@ -395,7 +551,7 @@ def render_sidebar():
             st.session_state.show_results = False
             st.rerun()
     else:
-        if st.session_state.data is None or st.session_state.normalized_data is None:
+        if st.session_state.get("data") is None or st.session_state.get("normalized_data") is None:
             if loading_in_progress:
                 st.info("Data is loading. Advanced search will unlock once processing completes.")
             else:
@@ -408,13 +564,13 @@ def render_sidebar():
     # ------------------------------------------------------------------
     # 6. ⚛️ Quantum + 🌐 Social AE (unchanged behaviour)
     # ------------------------------------------------------------------
-    st.markdown("### ⚛️ Quantum ranking")
+    st.markdown("### Quantum ranking")
     quantum_disabled = (not data_loaded) or loading_in_progress
     quantum_enabled = st.checkbox(
         "Enable quantum-inspired ranking",
         value=st.session_state.get("quantum_enabled", False),
         help=(
-            "Re-rank drug–event pairs using a heuristic inspired by quantum search. "
+            "Re-rank drug-event pairs using a heuristic inspired by quantum search. "
             "Deterministic, simulator-only in this demo."
         ),
         key="quantum_toggle",
@@ -428,7 +584,7 @@ def render_sidebar():
     st.session_state.quantum_enabled = quantum_enabled
 
     st.markdown("---")
-    st.markdown("### 🌐 Social AE signals")
+    st.markdown("### Social AE signals")
     social_disabled = (not data_loaded) or loading_in_progress
     include_social_ae = st.checkbox(
         "Include Social AE signals",
@@ -491,28 +647,29 @@ def render_sidebar():
     st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 8. 📊 Usage Statistics (FIXED - was missing in original proposal)
+    # 8. Usage statistics (FIXED - was missing in original proposal)
     # ------------------------------------------------------------------
     if st.checkbox("📊 Show usage statistics", key="show_stats"):
         try:
+            from src import analytics
             stats = analytics.get_usage_stats()
             st.markdown("#### Usage Statistics")
-            st.caption(f"Total sessions: {stats['total_sessions']}")
-            st.caption(f"Total events: {stats['total_events']}")
+            st.caption(f"Total sessions: {stats.get('total_sessions', 0)}")
+            st.caption(f"Total events: {stats.get('total_events', 0)}")
 
             if stats.get("events_by_type"):
                 st.markdown("**Events by type:**")
                 for event_type, count in stats["events_by_type"].items():
                     st.caption(f"  • {event_type}: {count}")
-        except Exception:
-            st.info("Usage statistics not available")
+        except Exception as e:
+            st.info(f"Usage statistics not available: {e}")
 
     st.markdown("---")
 
     # ------------------------------------------------------------------
-    # 9. 🧠 Developer Tools Panel (existing behaviour)
+    # 9. Developer Tools Panel (existing behaviour)
     # ------------------------------------------------------------------
-    with st.expander("⚙️ Developer Tools"):
+    with st.expander("Developer Tools"):
         debug_mode = st.checkbox(
             "Enable Debug Mode",
             value=st.session_state.get("debug_mode", False),
@@ -521,8 +678,9 @@ def render_sidebar():
         )
         st.session_state.debug_mode = debug_mode
         if debug_mode:
-            st.info("🔧 Debug mode enabled. Check the NL Query tab for Memory Inspector panel.")
+            st.info("Debug mode enabled. Check the NL Query tab for the Memory Inspector panel.")
 
     st.markdown("---")
     st.caption("AetherSignal – Quantum PV Explorer (demo build)")
     st.caption("Exploratory only – not for regulatory decision-making.")
+
