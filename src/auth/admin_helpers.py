@@ -46,6 +46,43 @@ def require_super_admin():
         raise PermissionError("Super admin access required. This feature is only available to administrators.")
 
 
+def is_admin(user_id: Optional[str] = None) -> bool:
+    """
+    Check if current user is an admin (org admin or super admin).
+    
+    Args:
+        user_id: Optional user ID to check. If None, uses current session user.
+    
+    Returns:
+        True if user is admin (role == "admin" or "super_admin")
+    """
+    # For now, treat admin == super_admin (both have elevated privileges)
+    # Later, you can distinguish org_admin vs super_admin if needed
+    return is_super_admin(user_id)
+
+
+def require_admin():
+    """
+    Require admin access (org admin or super admin).
+    Uses is_admin(), which already treats super_admin as admin.
+    
+    Raises:
+        PermissionError: If user is not an admin
+    """
+    try:
+        if not is_admin():
+            raise PermissionError(
+                "Admin access required. This feature is only available to "
+                "organization administrators or platform owners."
+            )
+        return True
+    except Exception:
+        # If anything goes wrong (no auth, profile lookup fails), treat as unauthorized
+        raise PermissionError(
+            "Admin access required. Please sign in with an admin account."
+        )
+
+
 def get_current_user_id() -> Optional[str]:
     """
     Get current user ID from session.

@@ -1,0 +1,615 @@
+Absolutely — before you migrate anything to **Bolt.new**, we must capture a **complete, structured, professional-grade summary** of:
+
+1. **Everything you have built**
+2. **Why each feature exists (background & purpose)**
+3. **How each feature works (architecture + business logic)**
+4. **How the modules connect**
+5. **What belongs in backend vs frontend**
+6. **What should be rebuilt / kept / migrated**
+
+This will become your **AetherSignal Engineering Blueprint**, and you’ll be able to copy/paste it directly into a new Bolt project so the new AI agents understand your entire system instantly.
+
+Below is the **first full master summary** of the entire AetherSignal platform as it exists today.
+
+---
+
+# 🧠 **AetherSignal – Full System Summary (Built to Date)**
+
+### *Architecture, Features, Business Logic, and Technical Workflow*
+
+This is written in a format that can be reused for new projects (Bolt, Next.js, or full microservices architecture).
+
+---
+
+# 1️⃣ **Core Value Proposition**
+
+AetherSignal is a **real-time PV + Safety Intelligence platform** combining:
+
+* **FAERS / Argus / Veeva case ingestion**
+* **Signal detection + disproportionality**
+* **Mechanism-of-action predictions**
+* **RAG-powered Safety Copilot**
+* **Quantum-inspired ranking**
+* **Social AE surveillance (Reddit, X, health forums)**
+* **Governance / lineage / evidence audit**
+
+At its heart:
+**Users upload safety data → AetherSignal normalizes → interprets queries → produces signals + insights.**
+
+---
+
+# 2️⃣ **Major Modules & Features (Detailed Breakdown)**
+
+---
+
+## ⭐ 2.1 **Quantum PV Explorer (Primary Signal Module)**
+
+**Purpose:**
+Give pharmacovigilance teams a Google-style interface to ask natural language questions about safety data.
+
+### **Capabilities Built**
+
+| Feature                      | Description                                                     | Business Logic                                                    |
+| ---------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Upload & Ingestion Layer** | Users upload FAERS/Argus/Veeva files                            | Detect file type → E2B XML → FAERS ASCII → CSV → unify            |
+| **Schema Detection**         | Auto-detects safety dataset schema                              | AI + rule-based mapping of DEMO/DRUG/REAC etc                     |
+| **Normalization Engine**     | Converts raw data to standard PV schema                         | Ensures consistent columns: drug, reaction, age, seriousness, etc |
+| **Query Interface**          | User types any NL query: “Find signals for dupilumab 2021–2023” | Hybrid: regex → NLP parser → LLM interpreter → filters            |
+| **Filtering Engine**         | Converts interpreted query → structured filters                 | Age, sex, country, seriousness, drug, reaction, date window       |
+| **Signal Detection**         | Computes DPA statistics & frequencies                           | PRR, ROR, count-based ranking                                     |
+| **Quantum Ranking**          | “Quantum-inspired” ranking logic                                | Weight scores based on novelty, effect size, consistency          |
+| **Summary Statistics**       | Quick insights at top of page                                   | Total cases, reporting trend, top drugs, top reactions            |
+| **Explainability Module**    | Breaks down why a signal is ranked high                         | Feature decomposition (case count, novelty, seriousness)          |
+
+### **How it works (Pipeline)**
+
+```
+Upload → Schema Detection → Normalization →
+NLP Query Interpretation → Filter Application →
+Signal Computation → Ranking → Explainability → Display
+```
+
+---
+
+## ⭐ 2.2 **Social AE Explorer**
+
+**Purpose:**
+Track real-time patient sentiment and AE mentions across social platforms.
+
+### **Capabilities**
+
+* Reddit/X scraping (simulated for now)
+* NLP extraction:
+
+  * drugs
+  * reactions
+  * sentiment
+  * severity indicators
+* Time-series visualization
+* Co-occurrence maps
+* Daily trending AE reports
+
+### **Business Logic**
+
+1. Pull posts → clean text
+2. Named-entity extraction (drug, reaction, symptoms)
+3. Sentiment scoring + severity keyword scoring
+4. Optional clustering to surface emerging themes
+5. Daily report generation
+
+This module *mirrors* the PV explorer’s layout:
+Top nav → Sidebar → Workspace routing → Social charts.
+
+---
+
+## ⭐ 2.3 **Safety Copilot (AI Assistant)**
+
+**Purpose:**
+LLM-powered agent to answer natural language safety questions using PV + Social + Literature data.
+
+### **Capabilities Built**
+
+* Tool routing (query FAERS, Social AE, Mechanism AI, Label Gap, Novelty scorer)
+* Evidence synthesis
+* Conversational memory
+* Structured outputs
+
+### **Business Logic**
+
+```
+User → Query Parser → Intent Detector →
+Tool Router → Evidence Builder → LLM →
+Structured Answer → Suggested Next Steps
+```
+
+This is one of the most advanced modules you built.
+
+---
+
+## ⭐ 2.4 **Mechanism Explorer (Mechanistic AI)**
+
+**Purpose:**
+Let scientists ask:
+“What biological mechanism explains this signal?”
+
+### **Capabilities**
+
+* Mapping reaction ↔ pathways via embeddings
+* Mechanistic similarity models
+* LLM narrative synthesis
+
+### **Business Logic**
+
+```
+Drug + Reaction →
+Embedding lookup →
+Gene/Pathway mapping →
+Mechanism hypothesis →
+LLM summarization
+```
+
+---
+
+## ⭐ 2.5 **Governance & Audit Workspace**
+
+Tracks:
+
+* Evidence lineage
+* Data provenance
+* Query audit logs
+* Model usage logs
+* System diagnostics
+* Versioning
+
+You built the **foundation** for 21CFR Part 11 compliance.
+
+---
+
+## ⭐ 2.6 **Executive Dashboard**
+
+For leadership users:
+
+* Portfolio overview
+* Hotspot drugs
+* Safety risk scoring
+* Global heat maps
+* Trending reactions
+* Business-impact metrics
+
+Backend logic:
+
+```
+Aggregate normalized data → compute KPIs → visual dashboards
+```
+
+---
+
+## ⭐ 2.7 **Workflow Dashboard**
+
+Designed to support:
+
+* Case review workflow
+* Signal triage
+* Approval chain
+* PSUR/DSUR reports
+
+(Backend exists, UI unfinished.)
+
+---
+
+## ⭐ 2.8 **PSUR / DSUR Auto-Writer**
+
+Built modules:
+
+* PSURGenerator
+* DSURGenerator
+* Label Gap Generator
+* AI Narrative Writer
+
+Business logic:
+
+```
+Pull FAERS trends + Social AE + signal outputs →
+Section templates →
+LLM writes narrative →
+Generate DOCX/PDF
+```
+
+---
+
+## ⭐ 2.9 **Hybrid Processing Engine**
+
+Automatically chooses processing mode:
+
+* **Auto** → picks best mode
+* **Server** → server-side pandas
+* **Local** → browser-based processing
+* **Hybrid** → split work depending on size
+
+This is one of the *smartest system-level features* in the app.
+
+---
+
+## ⭐ 2.10 **Navigation System (Current State)**
+
+This is where the pain exists:
+
+You currently have:
+
+* Top nav (custom HTML/JS)
+* Streamlit sidebar
+* Workspace routing (explorer / governance / quantum)
+* 5 unused sidebars
+* Broken unified navigation
+
+This will not be migrated — it will be replaced by Bolt UI.
+
+---
+
+# 3️⃣ **System-Level Services Already Built**
+
+## 🔹 3.1 Natural Language Interpretation Engine
+
+* Regex patterns
+* Rule-based filters
+* LLM fallback interpreter
+* Drug/reaction entity disambiguation
+* Query memory and correction
+
+## 🔹 3.2 Schema Detection Engine
+
+Detects FAERS-like files and maps to canonical schema.
+
+## 🔹 3.3 E2B XML Loader
+
+Loads Argus/EudraVigilance files into DataFrame.
+
+## 🔹 3.4 Normalization Engine
+
+Converts any dataset (CSV, Excel, PDF→table, FAERS zip) into standard PV schema.
+
+## 🔹 3.5 Semantic Cache Layer
+
+Embedding-based caching of:
+
+* interpreted queries
+* explainability outputs
+* mechanism predictions
+
+## 🔹 3.6 Analytics Logger
+
+Tracks:
+
+* query performance
+* usage stats
+* model calls
+* latency
+
+## 🔹 3.7 Admin Features
+
+* Pricing toggle
+* Feature gates
+* Role manager
+* API key manager
+* Billing integration placeholder
+
+---
+
+# 4️⃣ **What to Migrate vs What to Rebuild (for Bolt)**
+
+## ✅ **Migrate exactly as-is (backend Python services)**
+
+| Module                           | Why                | Notes                    |
+| -------------------------------- | ------------------ | ------------------------ |
+| NLP Interpreter                  | Core IP            | Wrap in FastAPI endpoint |
+| Signal Detection                 | Heavy lifting      | Keep in Python           |
+| Quantum Ranking                  | Proprietary        | Keeps value high         |
+| Mechanism AI                     | Python embeddings  |                          |
+| Explainability engine            | Reusable           |                          |
+| E2B / FAERS ingestion            | Complex            |                          |
+| Schema detection + normalization | Very advanced      |                          |
+| PSUR Writer                      | Already structured |                          |
+| Copilot Engine                   | Multi-agent design |                          |
+
+Everything above becomes **microservices** for Bolt frontend.
+
+---
+
+## 🔁 **Rebuild in Bolt (React/frontend)**
+
+| Component                  | Why Rebuild                      |
+| -------------------------- | -------------------------------- |
+| Top navigation             | Streamlit constraints            |
+| Sidebar navigation         | Should use Next.js layouts       |
+| Workspace selector         | Should be component-based        |
+| Results tables             | Better with React virtualization |
+| Upload UI                  | Tailwind/React Dropzone better   |
+| Filters panel              | Better interactions              |
+| KPI/metrics visualizations | Recharts is superior             |
+| Authentication UI          | use Supabase Auth UI             |
+
+---
+
+# 5️⃣ **Frontend UI Pages You Need in Bolt**
+
+```
+/upload
+/signals
+/social
+/copilot
+/mechanisms
+/governance
+/executive
+/workflows
+/reports
+/settings
+/billing
+/admin
+```
+
+Plus shared components:
+
+* **TopNav.tsx**
+* **SidebarNav.tsx**
+* **WorkspaceStatusBar.tsx**
+* **FilterPanel.tsx**
+* **ResultsTable.tsx**
+* **SignalCard.tsx**
+* **TrendChart.tsx**
+
+---
+
+# 6️⃣ **Here’s What You Can Copy Into Bolt Immediately**
+
+### **Project Context Summary (exact text to paste into Bolt)**
+
+> *“AetherSignal is a multi-module pharmacovigilance platform with Python microservices handling NLP interpretation, FAERS data ingestion, normalization, signal detection, disproportionality calculations, mechanism-of-action modeling, PSUR/DSUR report writing, and a safety copilot. The frontend should be built in Next.js with a global navigation layout, left sidebar for module navigation, and main workspace with StatusBar showing dataset, workspace, and processing mode. Bolt frontend interacts with backend services via REST APIs for signals, social AE, copilot, mechanism, explainability, schema detection, and PSUR generation.”*
+
+---
+
+# 7️⃣ **If You Want, I Can Generate Next:**
+
+### ✔ UI Wireframes
+
+### ✔ Bolt-ready React components
+
+### ✔ FastAPI backend folder structure
+
+### ✔ End-to-end architecture diagram
+
+### ✔ Migration roadmap
+
+### ✔ Service boundaries & data contracts
+
+### ✔ API spec for each module
+
+Just tell me **“Generate the Bolt-ready UI skeleton”** and I will produce:
+
+* `app/layout.tsx`
+* `components/TopNav.tsx`
+* `components/Sidebar.tsx`
+* `components/StatusBar.tsx`
+* Page placeholders
+
+Fully functional.
+You’re not wrong to worry about the backend here — PV data **will** explode fast 😅
+Think: tens of millions of rows per product over time, plus social, plus logs.
+
+Let me separate “backend” into 3 decisions and then give you a concrete recommendation.
+
+---
+
+## 1️⃣ Three backend choices you actually have to make
+
+When we say *backend*, we’re really choosing:
+
+1. **Backend framework / API layer**
+
+   * How clients talk to your system (REST/GraphQL/WebSockets)
+2. **Primary database(s)**
+
+   * Where you store auth, orgs, configs, and also where (or *if*) you store all the case-level rows
+3. **Processing + storage architecture**
+
+   * How you ingest big files and run heavy analytics
+
+Let’s go through them with your situation in mind.
+
+---
+
+## 2️⃣ Framework: what should serve the APIs?
+
+Given everything you’ve already built in Python (FAERS loaders, normalization, signals, mechanisms, PSUR writer, copilot, etc.), I’d **strongly** recommend:
+
+> **FastAPI as the main backend framework**
+
+**Why FastAPI makes sense for you:**
+
+* You keep **all your existing Python logic** (no rewrite into Node/Go).
+* Async I/O for:
+
+  * file uploads
+  * talking to DBs
+  * calling LLMs
+* Auto-generated **OpenAPI/Swagger** → super friendly for Bolt, React, external clients.
+* Works nicely with:
+
+  * Postgres / Supabase
+  * Redis
+  * Celery/RQ workers for heavy jobs
+
+If you wanted a more batteries-included thing: **Django + DRF** is fine, but for a data/AI-heavy system, **FastAPI + Pydantic** is usually the sweet spot.
+
+💡 **So for you:**
+➡️ **Backend = FastAPI + Python services (what you already built).**
+
+---
+
+## 3️⃣ Data layer: what to use when data grows fast
+
+This is the part that really matters for FAERS-scale growth.
+
+You basically want **two kinds of storage**:
+
+### A. Transactional DB (OLTP) – for users, orgs, configs
+
+Use this for:
+
+* Users, orgs, roles, permissions
+* Dataset metadata (name, owner, size, schema, status)
+* Saved queries, dashboards, workflows
+* Audit logs, billing metadata, feature flags
+
+Here, **Postgres** is perfect.
+
+Since you already know and use Supabase:
+
+> ✅ **Keep Supabase Postgres for all transactional data.**
+
+---
+
+### B. Analytical / case-level storage (OLAP) – for millions of rows
+
+This is where FAERS/social AE data lives. If you try to shove **everything** into normal Postgres and let users run arbitrary analytics, you will eventually suffer:
+
+* slow queries
+* locking & timeouts
+* very expensive scaling
+
+You want something **columnar / analytics-optimized**.
+
+You have a few good options, depending on budget + comfort:
+
+#### Option 1 – **Parquet + DuckDB / Polars (great for MVP)**
+
+**Pattern:**
+
+* Raw uploads → stored in **object storage** (S3, Supabase Storage, GCS).
+* You normalize → write **Parquet files** partitioned by:
+
+  * product
+  * year/month
+  * source (FAERS, E2B, Social AE)
+* For queries:
+
+  * Use **DuckDB (server-side)** or **Polars** to scan Parquet
+  * Expose results via FastAPI
+
+**Pros:**
+
+* Very cheap to store large volumes (object storage + Parquet).
+* Great performance for analytical queries on large files.
+* Minimal infra.
+* Works well with Python (you can reuse a lot of your code).
+
+**Cons:**
+
+* Harder when you need cross-dataset, multi-tenant, concurrent heavy querying at scale.
+* Not as straightforward for real-time dashboards / concurrency.
+
+This is **perfect for your next step** if you want a serious but still “startup-friendly” architecture.
+
+---
+
+#### Option 2 – **ClickHouse (or similar columnar DB)**
+
+Once you start getting into **tens of millions / hundreds of millions** of case rows and you want **fast, ad-hoc analytics**, **ClickHouse** is a very strong choice:
+
+* Columnar, compressed, **insanely fast** for aggregations.
+* Good for PV-like queries:
+
+  * counts by drug/reaction/time
+  * top N lists
+  * disproportionality calculations
+* Can handle **big FAERS-scale** data distros.
+
+**Pattern:**
+
+* Raw data in object storage.
+* ETL → ClickHouse tables:
+
+  * `cases`
+  * `drug_exposures`
+  * `reactions`
+* FastAPI talks directly to ClickHouse for metrics & signals.
+
+**Cons:**
+
+* More infra to manage (unless you use managed ClickHouse cloud).
+* Some learning curve vs “just Postgres”.
+
+---
+
+#### Option 3 – **BigQuery/Snowflake/Redshift** (if you go full enterprise)
+
+* Amazing scalability.
+* Expensive(ish), more enterprise-y.
+* Likely overkill until you have paying pharma customers.
+
+Right now I’d **not** start here unless a pharma customer is literally paying for it.
+
+---
+
+### 🧩 Recommended combo for you (realistic, not overkill)
+
+If I were designing this for your **next iteration**:
+
+**Phase 1 (MVP+ but serious):**
+
+* **Backend framework:** FastAPI
+* **Transactional DB:** Supabase Postgres
+* **Case-level storage:** Parquet on S3/Supabase Storage + DuckDB/Polars for analytics
+* **Cache:** Redis (optional but very helpful)
+* **Worker:** RQ or Celery for heavy jobs (large file ingest, PSUR runs, etc.)
+
+**Phase 2 (scale-up):**
+
+* Keep Postgres for transactional
+* Move heavy case tables → **ClickHouse**
+* Parquet still the raw layer (can ingest into ClickHouse)
+* Same FastAPI API, just different storage in the backend
+
+This gives you:
+
+* A path from **MVP → serious scale** without rewrites.
+* Reuse of **everything you already wrote in Python**.
+* A clean story when you bring this into **Bolt** as the UI layer.
+
+---
+
+## 4️⃣ How this ties into Bolt
+
+If you use **Bolt.new just for UI**, ideal flow looks like:
+
+* Bolt generates **React/Next.js frontends**.
+* Your backend is **FastAPI** with endpoints like:
+
+  * `POST /upload-faers`
+  * `POST /normalize`
+  * `POST /signals/query`
+  * `POST /mechanism`
+  * `POST /copilot/query`
+  * `GET /datasets/:id/summary`
+* Data storage:
+
+  * Supabase Postgres for metadata / users.
+  * Parquet / DuckDB (or ClickHouse later) for actual case rows.
+
+Bolt doesn’t care what DB you use as long as the API is well-defined.
+
+---
+
+## 5️⃣ TL;DR – What I’d choose for *your* backend
+
+If we had to make a call **right now**:
+
+> 🧱 **Framework:** FastAPI (Python)
+> 🗄️ **Transactional DB:** Supabase Postgres
+> 📦 **Case data:** Parquet + DuckDB/Polars (later ClickHouse if needed)
+> 🧵 **Workers:** RQ/Celery for big jobs
+> 🚀 **Frontend:** Bolt (Next.js/React) connecting via REST APIs
+
+If you want, next step I can:
+
+* Sketch the **FastAPI service layout** specifically for your existing modules (signals, social AE, copilot, PSUR).
+* Or design the **API contracts** so that when you open Bolt, you just say “call `/api/signals/query` with this payload” and it’s plug-and-play.

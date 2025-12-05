@@ -1,0 +1,41 @@
+"""
+API Keys Page - API key management
+Super admin only - requires authentication and super_admin role
+"""
+
+import streamlit as st
+from src.ui.top_nav import render_top_nav
+from src.auth.admin_helpers import require_super_admin
+from src.settings.api_key_manager import render_api_key_manager
+
+st.set_page_config(
+    page_title="AetherSignal — API Keys",
+    page_icon="🔐",
+    layout="wide"
+)
+
+# Global top navigation (show first)
+render_top_nav()
+
+# Check authentication first
+from src.auth.auth import is_authenticated
+if not is_authenticated():
+    st.warning("⚠️ Please login to access API keys.")
+    if st.button("Go to Login"):
+        st.switch_page("pages/Login.py")
+    st.stop()
+
+# Enforce super_admin role (with error handling)
+try:
+    require_super_admin()
+except PermissionError:
+    st.error("🔒 Access Denied: This page is only available to platform super administrators.")
+    st.info("Please contact your system administrator if you need access to API keys.")
+    st.stop()
+
+st.title("🔐 Global API Keys")
+st.caption("Manage platform-wide API keys for external services (LLMs, social APIs, OpenFDA, PubMed helpers, etc.). Only platform super administrators can view and edit these keys.")
+
+# Delegate to existing key manager UI
+render_api_key_manager()
+

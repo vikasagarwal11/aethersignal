@@ -2,7 +2,7 @@
 Evidence Ranker - Unified Evidence Ranking (Quantum + Causal + Mechanistic + Toxicology)
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 
 logger = logging.getLogger(__name__)

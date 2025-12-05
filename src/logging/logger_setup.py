@@ -50,10 +50,16 @@ def setup_logging(
         ]
     )
     
-    # Set specific logger levels
+    # Set specific logger levels to suppress verbose output
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("supabase").setLevel(logging.WARNING)
+    logging.getLogger("postgrest").setLevel(logging.WARNING)
+    logging.getLogger("gotrue").setLevel(logging.WARNING)
+    logging.getLogger("realtime").setLevel(logging.WARNING)
+    logging.getLogger("storage").setLevel(logging.WARNING)
     
     logger = logging.getLogger(__name__)
     logger.info(f"Logging configured: level={log_level}, file={log_file}")

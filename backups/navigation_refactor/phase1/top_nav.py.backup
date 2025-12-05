@@ -1,0 +1,515 @@
+"""
+Top navigation bar component for AetherSignal.
+Provides a fixed navigation bar across all pages.
+FIXED: Navigation positioning and click handling
+"""
+
+import streamlit as st
+
+
+def render_top_nav() -> None:
+    """Render fixed top navigation bar with page links."""
+    
+    # CRITICAL: Ensure session is restored before checking auth status
+    try:
+        from src.auth.auth import restore_session, is_authenticated, get_current_user, logout_user
+        from src.auth.admin_helpers import is_admin, is_super_admin
+        
+        # Restore session if needed (in case it wasn't restored on page load)
+        restore_session()
+        
+        # Now check authentication status
+        is_auth = is_authenticated()
+        user = get_current_user() if is_auth else None
+        
+        # Admin / super admin flags
+        try:
+            is_super = is_super_admin() if is_auth else False
+            is_org_admin = is_admin() if is_auth else False
+        except Exception:
+            is_super = False
+            is_org_admin = False
+        
+        # Generate profile dropdown HTML
+        if is_auth and user:
+            # Show profile dropdown menu
+            user_email = user.get('email', 'User') if isinstance(user, dict) else 'User'
+            
+            # Build dropdown menu items
+            menu_items = [
+                f'<a href="/Profile" data-nav="profile" class="profile-menu-item">👤 Profile</a>',
+            ]
+            
+            # Build admin-only links with proper role separation
+            admin_links_html = ""
+            
+            # Billing: org_admin + super_admin
+            if is_org_admin:
+                admin_links_html += '<a href="/Billing" data-nav="billing" class="profile-menu-item">💳 Billing</a>'
+            
+            # Super admin–only tools
+            if is_super:
+                admin_links_html += '<a href="/Settings" data-nav="settings" class="profile-menu-item">⚙️ Settings</a>'
+                admin_links_html += '<a href="/API_Keys" data-nav="api_keys" class="profile-menu-item">🔐 API Keys</a>'
+                admin_links_html += '<a href="/98_🔐_Data_Source_Manager" data-nav="data_sources" class="profile-menu-item">🗂️ Data Sources</a>'
+                admin_links_html += '<a href="/System_Diagnostics" data-nav="system_diagnostics" class="profile-menu-item">🧪 System Diagnostics</a>'
+            
+            # Add admin links if any
+            if admin_links_html:
+                menu_items.append('<div class="profile-menu-divider"></div>')
+                menu_items.append(admin_links_html)
+            
+            # Add logout
+            menu_items.append('<div class="profile-menu-divider"></div>')
+            menu_items.append(f'<a href="#" onclick="window.parent.postMessage({{type: \'streamlit:setComponentValue\', key: \'nav_action\', value: \'logout\'}}, \'*\'); return false;" class="profile-menu-item profile-menu-logout">🚪 Logout</a>')
+            
+            menu_html = '\n'.join(menu_items)
+            
+            auth_buttons_html = f'''
+                <div class="nav-profile-dropdown" style="position: relative; margin-left: 1rem;">
+                    <button class="profile-dropdown-btn" onclick="toggleProfileDropdown(event)" style="background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.4); border-radius: 8px; padding: 0.5rem 1rem; color: white; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+                        <span>👤</span>
+                        <span style="max-width: 180px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{user_email}</span>
+                        <span style="font-size: 0.7rem;">▼</span>
+                    </button>
+                    <div class="profile-dropdown-menu" id="profileDropdownMenu" style="display: none; position: absolute; top: 100%; right: 0; margin-top: 0.5rem; background: #1e293b; border: 1px solid #334155; border-radius: 8px; min-width: 220px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 1000000; overflow: hidden;">
+                        {menu_html}
+                    </div>
+                </div>
+            '''
+        else:
+            # Show login/register buttons
+            auth_buttons_html = '''
+                <div class="nav-auth-buttons" style="display: flex; align-items: center; gap: 0.5rem; margin-left: 1rem;">
+                    <a class="nav-link" href="/Login" data-nav="login" target="_self" style="font-size: 0.9rem;">🔐 Login</a>
+                    <a class="nav-link" href="/Register" data-nav="register" target="_self" style="font-size: 0.9rem; background: rgba(59,130,246,0.2); padding: 0.4rem 0.8rem; border-radius: 6px;">📝 Register</a>
+                </div>
+            '''
+    except Exception:
+        # Auth not available - show no auth buttons
+        auth_buttons_html = ''
+    
+    # Build navigation HTML separately to avoid f-string issues with CSS
+    nav_content = f'''<div class="aether-top-nav"><a class="nav-left" href="/" data-nav="home" target="_self"><span class="nav-icon">⚛️</span> <strong>AetherSignal</strong></a><div class="nav-right"><a class="nav-link" href="/" data-nav="home" target="_self">🏠 Home</a><a class="nav-link" href="/Quantum_PV_Explorer" data-nav="quantum" target="_self">⚛️ Quantum PV</a><a class="nav-link" href="/Social_AE_Explorer" data-nav="social" target="_self">🌐 Social AE</a>{auth_buttons_html}</div></div>'''
+    
+    # Render CSS and JavaScript in separate markdown calls to avoid rendering issues
+    st.markdown("""
+    <style>
+    /* Fixed top nav below the Streamlit header */
+    .aether-top-nav {
+        position: fixed !important;
+        top: 60px !important;
+        left: 0 !important;
+        right: 0 !important;
+        height: 70px !important;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+        z-index: 999980 !important;
+        padding: 0 3rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        border-bottom: 1px solid #334155 !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+        color: white !important;
+        pointer-events: auto !important;
+    }
+    
+    .nav-left {
+        font-size: 1.6rem !important;
+        font-weight: 700 !important;
+        color: white !important;
+        cursor: pointer !important;
+        pointer-events: auto !important;
+        user-select: none !important;
+        text-decoration: none !important;
+    }
+    
+    .nav-left:hover {
+        text-decoration: none !important;
+    }
+    
+    .nav-left .nav-icon {
+        text-decoration: none !important;
+        display: inline-block;
+    }
+    
+    .nav-right {
+        display: flex !important;
+        gap: 2.5rem !important;
+        pointer-events: auto !important;
+    }
+    
+    .nav-link {
+        color: #94a3b8 !important;
+        text-decoration: none !important;
+        font-weight: 500 !important;
+        padding: 0.5rem 1rem !important;
+        border-bottom: 3px solid transparent !important;
+        transition: all 0.3s !important;
+        cursor: pointer !important;
+        pointer-events: auto !important;
+        user-select: none !important;
+        display: inline-block !important;
+    }
+    
+    .nav-link:hover {
+        color: white !important;
+    }
+    
+    .nav-link.active {
+        color: #60a5fa !important;
+        border-bottom: 3px solid #60a5fa !important;
+    }
+
+    /* Profile dropdown styles */
+    .profile-menu-item {
+        display: block !important;
+        padding: 0.75rem 1rem !important;
+        color: #e2e8f0 !important;
+        text-decoration: none !important;
+        font-size: 0.9rem !important;
+        transition: background 0.2s !important;
+        border-bottom: 1px solid #334155 !important;
+    }
+    
+    .profile-menu-item:last-child {
+        border-bottom: none !important;
+    }
+    
+    .profile-menu-item:hover {
+        background: #334155 !important;
+        color: white !important;
+    }
+    
+    .profile-menu-divider {
+        margin: 0.25rem 0 !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    
+    .profile-menu-logout {
+        color: #f87171 !important;
+    }
+    
+    .profile-menu-logout:hover {
+        background: rgba(248, 113, 113, 0.1) !important;
+        color: #fca5a5 !important;
+    }
+
+    /* Always-visible sidebar reopen helper */
+    #aether-sidebar-reopen {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 100000;
+        background: rgba(15,23,42,0.95);
+        color: #e2e8f0;
+        border: 1px solid rgba(148,163,184,0.5);
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        font-weight: 600;
+    }
+    #aether-sidebar-reopen:hover {
+        color: #fff;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.45);
+    }
+    
+    @media (max-width: 768px) {
+        .aether-top-nav {
+            padding: 0 1rem;
+        }
+        .nav-right {
+            gap: 1rem;
+        }
+        .nav-link {
+            font-size: 0.9rem;
+        }
+        .nav-left {
+            font-size: 1.4rem;
+        }
+    }
+    </style>
+
+    <button id="aether-sidebar-reopen" title="Toggle navigation">☰</button>
+
+    <script>
+    (function() {
+        'use strict';
+        
+        // Highlight active page with error handling
+        function highlightActivePage() {
+            try {
+            const path = window.location.pathname;
+            const links = document.querySelectorAll('.nav-link');
+                
+                if (!links || links.length === 0) return;
+            
+            links.forEach(link => {
+                    if (link && link.classList) {
+                link.classList.remove('active');
+                    }
+            });
+            
+            if (path === '/' || path === '' || path.includes('app.py')) {
+                    const homeLink = Array.from(links).find(l => l && l.textContent && l.textContent.includes('Home'));
+                    if (homeLink && homeLink.classList) homeLink.classList.add('active');
+            } else if (path.includes('Quantum_PV_Explorer')) {
+                    const quantumLink = Array.from(links).find(l => l && l.textContent && l.textContent.includes('Quantum PV'));
+                    if (quantumLink && quantumLink.classList) quantumLink.classList.add('active');
+            } else if (path.includes('Social_AE_Explorer')) {
+                    const socialLink = Array.from(links).find(l => l && l.textContent && l.textContent.includes('Social AE'));
+                    if (socialLink && socialLink.classList) socialLink.classList.add('active');
+            }
+            } catch (e) {
+                // Gracefully handle errors without cluttering console
+                if (window.console && console.warn) {
+                    console.warn('Navigation highlight error (non-critical):', e.message);
+                }
+            }
+        }
+        
+        // Initialize on page load
+        function initNavigation() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', highlightActivePage);
+        } else {
+            highlightActivePage();
+        }
+        }
+        
+        initNavigation();
+        
+        // Debounced highlight function to prevent excessive calls
+        let highlightTimeout;
+        const debouncedHighlight = () => {
+            clearTimeout(highlightTimeout);
+            highlightTimeout = setTimeout(highlightActivePage, 200);
+        };
+        
+        // Optimized MutationObserver - only watch navigation container
+        let observer;
+        function setupObserver() {
+            try {
+                const navContainer = document.querySelector('.aether-top-nav');
+                if (navContainer && window.MutationObserver) {
+                    observer = new MutationObserver((mutations) => {
+                        // Only react to changes in navigation links
+                        const hasNavChange = mutations.some(mutation => {
+                            if (mutation.type !== 'childList') return false;
+                            const target = mutation.target;
+                            return target && (
+                                target.classList?.contains('nav-link') ||
+                                target.classList?.contains('nav-right') ||
+                                target.closest?.('.aether-top-nav')
+                            );
+                        });
+                        if (hasNavChange) {
+                            debouncedHighlight();
+                        }
+                    });
+                    observer.observe(navContainer, { 
+                        childList: true, 
+                        subtree: true,
+                        attributes: false 
+                    });
+                }
+            } catch (e) {
+                // Observer setup failed - non-critical
+            }
+        }
+        
+        // Setup observer after a short delay to ensure DOM is ready
+        setTimeout(setupObserver, 100);
+        
+        // Re-highlight after Streamlit reruns (with debouncing)
+        if (window.parent && window.parent.postMessage) {
+            const originalRerun = window.parent.postMessage;
+            // Note: We can't intercept Streamlit's rerun, so we use the observer instead
+        }
+
+        // Wire the sidebar toggle button
+        function setupSidebarToggle() {
+            try {
+                const helperBtn = document.getElementById('aether-sidebar-reopen');
+        if (helperBtn) {
+                    helperBtn.addEventListener('click', function() {
+                        try {
+                            const toggler = document.querySelector(
+                                'button[aria-label*="sidebar"], ' +
+                                'button[aria-label*="menu"], ' +
+                                'button[kind="header"]'
+                            );
+                            if (toggler && toggler.click) {
+                                toggler.click();
+                            }
+                        } catch (e) {
+                            // Non-critical error
+                        }
+                    });
+                }
+            } catch (e) {
+                // Non-critical error
+            }
+        }
+        
+        // Setup sidebar toggle after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupSidebarToggle);
+        } else {
+            setupSidebarToggle();
+        }
+        
+        // Handle navigation clicks - use Streamlit's page routing
+        // Note: Streamlit pages are accessed via their filename (without .py) in the URL
+        function setupNavigationClicks() {
+            try {
+                const navLinks = document.querySelectorAll('.nav-link, .nav-left');
+                navLinks.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const dataNav = this.getAttribute('data-nav');
+                        const href = this.getAttribute('href');
+                        
+                        // Map to Streamlit page paths (without numeric prefixes)
+                        let targetUrl = href || '/';
+                        if (dataNav === 'quantum') {
+                            targetUrl = '/Quantum_PV_Explorer';
+                        } else if (dataNav === 'social') {
+                            targetUrl = '/Social_AE_Explorer';
+                        } else if (dataNav === 'home') {
+                            targetUrl = '/';
+                        } else if (dataNav === 'login') {
+                            targetUrl = '/Login';
+                        } else if (dataNav === 'register') {
+                            targetUrl = '/Register';
+                        } else if (dataNav === 'profile') {
+                            targetUrl = '/Profile';
+                        } else if (dataNav === 'settings') {
+                            targetUrl = '/Settings';
+                        } else if (dataNav === 'api_keys') {
+                            targetUrl = '/API_Keys';
+                        } else if (dataNav === 'billing') {
+                            targetUrl = '/Billing';
+                        } else if (dataNav === 'data_sources') {
+                            targetUrl = '/98_🔐_Data_Source_Manager';
+                        } else if (dataNav === 'system_diagnostics') {
+                            targetUrl = '/System_Diagnostics';
+                        }
+                        
+                        // Navigate in the same window using Streamlit's routing
+                        window.location.href = targetUrl;
+                        return false;
+                    });
+                });
+            } catch (e) {
+                console.warn('Navigation setup error:', e);
+            }
+        }
+        
+        // Setup navigation clicks
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupNavigationClicks);
+        } else {
+            setupNavigationClicks();
+        }
+        
+        // Profile dropdown toggle
+        function toggleProfileDropdown(event) {
+            event.stopPropagation();
+            const menu = document.getElementById('profileDropdownMenu');
+            if (menu) {
+                const isVisible = menu.style.display !== 'none';
+                menu.style.display = isVisible ? 'none' : 'block';
+                
+                // Close dropdown when clicking outside
+                if (!isVisible) {
+                    setTimeout(() => {
+                        document.addEventListener('click', function closeDropdown(e) {
+                            if (!e.target.closest('.nav-profile-dropdown')) {
+                                menu.style.display = 'none';
+                                document.removeEventListener('click', closeDropdown);
+                            }
+                        });
+                    }, 100);
+                }
+            }
+        }
+        
+        // Make toggleProfileDropdown available globally
+        window.toggleProfileDropdown = toggleProfileDropdown;
+        
+        // Handle profile menu item clicks
+        function setupProfileMenuClicks() {
+            try {
+                const menuItems = document.querySelectorAll('.profile-menu-item');
+                menuItems.forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        const href = this.getAttribute('href');
+                        const dataNav = this.getAttribute('data-nav');
+                        
+                        if (href && href !== '#') {
+                            // Close dropdown
+                            const menu = document.getElementById('profileDropdownMenu');
+                            if (menu) menu.style.display = 'none';
+                            
+                            // Navigate
+                            if (dataNav === 'profile') {
+                                window.location.href = '/Profile';
+                            } else if (dataNav === 'settings') {
+                                window.location.href = '/Settings';
+                            } else if (dataNav === 'api_keys') {
+                                window.location.href = '/API_Keys';
+                            } else if (dataNav === 'billing') {
+                                window.location.href = '/Billing';
+                            } else if (dataNav === 'data_sources') {
+                                window.location.href = '/98_🔐_Data_Source_Manager';
+                            } else if (dataNav === 'system_diagnostics') {
+                                window.location.href = '/System_Diagnostics';
+                            } else {
+                                window.location.href = href;
+                            }
+                        }
+                    });
+                });
+            } catch (e) {
+                console.warn('Profile menu setup error:', e);
+            }
+        }
+        
+        // Setup profile menu clicks
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupProfileMenuClicks);
+        } else {
+            setupProfileMenuClicks();
+        }
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+    
+    # Render navigation HTML separately
+    st.markdown(nav_content, unsafe_allow_html=True)
+    
+        # Handle navigation actions for authentication
+    try:
+        from src.auth.auth import is_authenticated, get_current_user, logout_user
+        
+        is_auth = is_authenticated()
+        user = get_current_user() if is_auth else None
+        
+        # Handle navigation actions (for profile/logout only - login/register use direct links)
+        if 'nav_action' in st.session_state:
+            action = st.session_state.nav_action
+            del st.session_state.nav_action
+            
+            if action == 'profile':
+                st.switch_page("pages/Profile.py")
+            elif action == 'logout':
+                logout_user()
+                st.success("Logged out successfully!")
+                st.rerun()
+    except Exception:
+        # Auth module not available or error - continue without auth
+        pass

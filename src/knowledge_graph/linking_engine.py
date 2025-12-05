@@ -3,7 +3,7 @@ Linking Engine - Automatic KG population from data sources
 """
 
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from .kg_core import KnowledgeGraph
 import logging
 

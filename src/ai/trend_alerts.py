@@ -1342,7 +1342,7 @@ def detect_trend_alerts(df: pd.DataFrame, mode: str = "auto") -> Dict[str, Any]:
     """
     Analyze dataset and detect meaningful safety-related trends,
     spikes, anomalies, and emerging signal-like patterns.
-    
+
     CHUNK 6.11: Comprehensive trend alerts engine.
     
     Args:
@@ -1372,12 +1372,12 @@ def detect_trend_alerts(df: pd.DataFrame, mode: str = "auto") -> Dict[str, Any]:
             "trend_notes": [],
             "meta": {"total_cases": 0}
         }
-    
+
     alerts = []
     spikes = []
     emerging_signals = []
     trend_notes = []
-    
+
     total_cases = len(df)
     
     # Helper: Find date column

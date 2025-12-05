@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     email TEXT UNIQUE NOT NULL,
     full_name TEXT,
     organization TEXT NOT NULL,
-    role TEXT DEFAULT 'scientist' CHECK (role IN ('admin', 'scientist', 'viewer')),
+    role TEXT DEFAULT 'scientist' CHECK (role IN ('super_admin', 'admin', 'scientist', 'viewer')),
     subscription_tier TEXT DEFAULT 'free' CHECK (subscription_tier IN ('free', 'pro', 'enterprise')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
