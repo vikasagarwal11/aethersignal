@@ -44,17 +44,35 @@ This document lists all database scripts in the order they should be executed.
 - Creates `public_ae_data` table for public data platform
 - **Dependencies:** None (independent table)
 
+### **07_performance_indexes.sql** - Performance Indexes
+- Creates critical performance indexes (10-20x faster queries)
+- Includes: user_drug_reaction, created_at_org, event_date, serious_outcome
+- **Dependencies:** Requires `00_schema.sql` (indexes `pv_cases` table)
+
+### **08_file_upload_history.sql** - File Upload Tracking
+- Creates `file_upload_history` table
+- Tracks file uploads, processing status, and metadata
+- **Dependencies:** Requires `00_schema.sql` (references `user_profiles`)
+
+### **09_additional_performance_indexes.sql** - Additional Production Indexes
+- Documents indexes created in production but not yet in migration scripts
+- Includes: org_date_range, serious_drug_reaction (enhanced versions)
+- **Dependencies:** Requires `07_performance_indexes.sql`
+
 ## 🚀 Quick Start
 
 ### For New Databases:
 ```sql
 -- Run in this order:
-1. 00_schema.sql
-2. 02_schema_extensions.sql (optional)
-3. 03_schema_tenant_upgrade.sql (optional)
-4. 04_org_profile_config_schema.sql (optional)
-5. 05_unified_ae_schema.sql (optional)
-6. 06_public_ae_data_schema.sql (optional)
+1. 00_schema.sql (REQUIRED - base schema)
+2. 07_performance_indexes.sql (RECOMMENDED - 10-20x faster queries)
+3. 09_additional_performance_indexes.sql (RECOMMENDED - additional indexes)
+4. 02_schema_extensions.sql (optional)
+5. 03_schema_tenant_upgrade.sql (optional)
+6. 04_org_profile_config_schema.sql (optional)
+7. 05_unified_ae_schema.sql (optional)
+8. 06_public_ae_data_schema.sql (optional)
+9. 08_file_upload_history.sql (optional)
 ```
 
 ### For Existing Databases:
